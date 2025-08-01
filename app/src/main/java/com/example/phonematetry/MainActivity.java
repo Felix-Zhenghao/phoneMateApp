@@ -48,7 +48,14 @@ public class MainActivity extends AppCompatActivity {
         mediaProjectionManager = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
         
         initViews();
-        checkPermissions();
+        
+        // 检查是否是从Service请求重新获取MediaProjection权限
+        if (getIntent().getBooleanExtra("requestMediaProjection", false)) {
+            Toast.makeText(this, "正在重新获取截图权限...", Toast.LENGTH_SHORT).show();
+            requestMediaProjectionPermission();
+        } else {
+            checkPermissions();
+        }
     }
     
     private void initViews() {
@@ -169,6 +176,18 @@ public class MainActivity extends AppCompatActivity {
         moveTaskToBack(true);
     }
     
+    private void updateServiceMediaProjection() {
+        // 更新已运行服务的MediaProjection权限
+        Intent serviceIntent = new Intent(this, VoiceAssistantService.class);
+        if (mediaProjectionIntent != null) {
+            serviceIntent.putExtra("mediaProjectionIntent", mediaProjectionIntent);
+            serviceIntent.putExtra("updateMediaProjection", true);
+        }
+        startForegroundService(serviceIntent);
+        
+        Toast.makeText(this, "截图权限已更新", Toast.LENGTH_SHORT).show();
+    }
+    
     private boolean isServiceRunning(Class<?> serviceClass) {
         ActivityManager manager = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
         for (ActivityManager.RunningServiceInfo service : manager.getRunningServices(Integer.MAX_VALUE)) {
@@ -255,12 +274,27 @@ public class MainActivity extends AppCompatActivity {
             if (resultCode == RESULT_OK) {
                 mediaProjectionIntent = data;
                 Toast.makeText(this, "屏幕录制权限已授予", Toast.LENGTH_SHORT).show();
-                // 启动服务
-                startVoiceAssistantService();
+                
+                // 检查是否是重新获取权限的请求
+                if (getIntent().getBooleanExtra("requestMediaProjection", false)) {
+                    // 重新获取权限，更新已运行的服务
+                    updateServiceMediaProjection();
+                    // 关闭Activity，返回到服务
+                    finish();
+                } else {
+                    // 首次启动，启动服务
+                    startVoiceAssistantService();
+                }
             } else {
                 Toast.makeText(this, "屏幕录制权限被拒绝，截图功能将无法使用", Toast.LENGTH_LONG).show();
-                // 即使没有屏幕录制权限，也可以启动服务（只是截图功能受限）
-                startVoiceAssistantService();
+                
+                if (getIntent().getBooleanExtra("requestMediaProjection", false)) {
+                    // 重新获取权限被拒绝，关闭Activity
+                    finish();
+                } else {
+                    // 首次启动，即使没有屏幕录制权限，也可以启动服务（只是截图功能受限）
+                    startVoiceAssistantService();
+                }
             }
         }
     }

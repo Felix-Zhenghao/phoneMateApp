@@ -75,6 +75,11 @@ public class VoiceAssistantService extends Service {
     private VirtualDisplay virtualDisplay;
     private ImageReader imageReader;
     private Handler backgroundHandler;
+    private MediaProjection.Callback mediaProjectionCallback;
+    private boolean isMediaProjectionCallbackRegistered = false;
+    private boolean isCapturingScreen = false;
+    private long lastCaptureTime = 0;
+    private static final long CAPTURE_COOLDOWN = 1000; // 1秒冷却时间
     private boolean isRecording = false;
     private Thread recordingThread;
     private WaveformView waveformView;
@@ -130,14 +135,48 @@ public class VoiceAssistantService extends Service {
             if (intent != null && intent.hasExtra("mediaProjectionIntent")) {
                 Log.d(TAG, "检测到mediaProjectionIntent");
                 Intent mediaProjectionIntent = intent.getParcelableExtra("mediaProjectionIntent");
+                boolean isUpdate = intent.getBooleanExtra("updateMediaProjection", false);
+                
                 if (mediaProjectionIntent != null && mediaProjectionManager != null) {
                     try {
+                        // 如果是更新权限，先清理旧的MediaProjection
+                        if (isUpdate && mediaProjection != null) {
+                            Log.d(TAG, "清理旧的MediaProjection");
+                            try {
+                                mediaProjection.stop();
+                            } catch (Exception e) {
+                                Log.e(TAG, "停止旧MediaProjection失败", e);
+                            }
+                            mediaProjection = null;
+                        }
+                        
                         Log.d(TAG, "开始初始化MediaProjection");
                         mediaProjection = mediaProjectionManager.getMediaProjection(Activity.RESULT_OK, mediaProjectionIntent);
                         if (mediaProjection != null) {
                             Log.d(TAG, "MediaProjection权限已成功获取");
+                            
+                            // 注册MediaProjection回调（只注册一次）
+                            if (!isMediaProjectionCallbackRegistered) {
+                                mediaProjectionCallback = new MediaProjection.Callback() {
+                                    @Override
+                                    public void onStop() {
+                                        Log.d(TAG, "MediaProjection stopped by system - this should not happen during normal operation");
+                                        // 系统强制停止MediaProjection时的完全清理
+                                        cleanupAllMediaProjectionResources();
+                                        // 标记需要重新获取权限
+                                        new Handler(Looper.getMainLooper()).post(() -> {
+                                            Toast.makeText(VoiceAssistantService.this, "截图权限被系统回收，下次截图时将重新申请", Toast.LENGTH_SHORT).show();
+                                        });
+                                    }
+                                };
+                                mediaProjection.registerCallback(mediaProjectionCallback, backgroundHandler);
+                                isMediaProjectionCallbackRegistered = true;
+                                Log.d(TAG, "MediaProjection callback registered");
+                            }
+                            
+                            String message = isUpdate ? "截图权限已更新，可以继续使用截图功能" : "屏幕录制权限已获取，截图功能可用";
                             new Handler(Looper.getMainLooper()).post(() -> {
-                                Toast.makeText(this, "屏幕录制权限已获取，截图功能可用", Toast.LENGTH_SHORT).show();
+                                Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
                             });
                         } else {
                             Log.e(TAG, "MediaProjection为null");
@@ -188,21 +227,8 @@ public class VoiceAssistantService extends Service {
         // 停止录音
         stopVoiceRecording();
         
-        // 清理MediaProjection资源
-        if (virtualDisplay != null) {
-            virtualDisplay.release();
-            virtualDisplay = null;
-        }
-        
-        if (imageReader != null) {
-            imageReader.close();
-            imageReader = null;
-        }
-        
-        if (mediaProjection != null) {
-            mediaProjection.stop();
-            mediaProjection = null;
-        }
+        // 完全清理所有MediaProjection资源（包括MediaProjection本身）
+        cleanupAllMediaProjectionResources();
         
         // 清理后台Handler
         if (backgroundHandler != null) {
@@ -503,20 +529,125 @@ public class VoiceAssistantService extends Service {
         mediaProjectionManager = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
     }
     
+    private void requestNewMediaProjectionPermission() {
+        Log.d(TAG, "Requesting new MediaProjection permission");
+        Toast.makeText(this, "截图权限已失效，请重新授权", Toast.LENGTH_LONG).show();
+        
+        // 只在确实需要时才清理MediaProjection
+        if (mediaProjection != null) {
+            try {
+                // 取消注册回调
+                if (isMediaProjectionCallbackRegistered && mediaProjectionCallback != null) {
+                    mediaProjection.unregisterCallback(mediaProjectionCallback);
+                    isMediaProjectionCallbackRegistered = false;
+                    Log.d(TAG, "MediaProjection callback unregistered");
+                }
+                mediaProjection.stop();
+                Log.d(TAG, "MediaProjection stopped for re-authorization");
+            } catch (Exception e) {
+                Log.e(TAG, "Error stopping MediaProjection", e);
+            }
+            mediaProjection = null;
+        }
+        
+        // 启动MainActivity来重新获取权限
+        Intent intent = new Intent(this, MainActivity.class);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        intent.putExtra("requestMediaProjection", true);
+        startActivity(intent);
+    }
+    
+    private void cleanupMediaProjectionResources() {
+        Log.d(TAG, "Cleaning up MediaProjection resources");
+        
+        // 清理VirtualDisplay
+        if (virtualDisplay != null) {
+            try {
+                virtualDisplay.release();
+                Log.d(TAG, "VirtualDisplay released");
+            } catch (Exception e) {
+                Log.e(TAG, "Error releasing VirtualDisplay", e);
+            }
+            virtualDisplay = null;
+        }
+        
+        // 清理ImageReader
+        if (imageReader != null) {
+            try {
+                imageReader.close();
+                Log.d(TAG, "ImageReader closed");
+            } catch (Exception e) {
+                Log.e(TAG, "Error closing ImageReader", e);
+            }
+            imageReader = null;
+        }
+        
+        // 注意：不清理MediaProjection，保持一次授权多次截图
+        // MediaProjection将在服务销毁时或权限失效时才清理
+        
+        isCapturingScreen = false;
+    }
+    
+    // 新增方法：完全清理所有MediaProjection相关资源（仅在服务销毁时使用）
+    private void cleanupAllMediaProjectionResources() {
+        Log.d(TAG, "Cleaning up ALL MediaProjection resources");
+        
+        // 先清理VirtualDisplay和ImageReader
+        cleanupMediaProjectionResources();
+        
+        // 然后清理MediaProjection
+        if (mediaProjection != null) {
+            try {
+                if (isMediaProjectionCallbackRegistered && mediaProjectionCallback != null) {
+                    mediaProjection.unregisterCallback(mediaProjectionCallback);
+                    isMediaProjectionCallbackRegistered = false;
+                    Log.d(TAG, "MediaProjection callback unregistered");
+                }
+                mediaProjection.stop();
+                Log.d(TAG, "MediaProjection stopped");
+            } catch (Exception e) {
+                Log.e(TAG, "Error stopping MediaProjection", e);
+            }
+            mediaProjection = null;
+        }
+    }
+    
     private void performScreenCapture() {
         Log.d(TAG, "performScreenCapture called");
         
+        // 检查冷却时间，防止频繁截图
+        long currentTime = System.currentTimeMillis();
+        if (currentTime - lastCaptureTime < CAPTURE_COOLDOWN) {
+            Log.d(TAG, "Screenshot request too frequent, ignoring");
+            Toast.makeText(this, "截图请求过于频繁，请稍后再试", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        
+        // 检查是否正在截图
+        if (isCapturingScreen) {
+            Log.d(TAG, "Already capturing screen, ignoring request");
+            Toast.makeText(this, "正在截图中，请稍候", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        
         try {
             if (mediaProjection == null) {
-                Log.e(TAG, "MediaProjection is null, cannot capture screen");
-                Toast.makeText(this, "截图失败：需要屏幕录制权限", Toast.LENGTH_SHORT).show();
+                Log.e(TAG, "MediaProjection is null, requesting new permission");
+                Toast.makeText(this, "需要重新获取截图权限", Toast.LENGTH_SHORT).show();
+                requestNewMediaProjectionPermission();
                 return;
             }
+            
+            lastCaptureTime = currentTime;
+            isCapturingScreen = true;
+            
+            Log.d(TAG, "MediaProjection is available, proceeding with screenshot");
             
             // 获取屏幕尺寸
             WindowManager windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
             if (windowManager == null) {
                 Log.e(TAG, "WindowManager is null");
+                isCapturingScreen = false;
                 return;
             }
             
@@ -534,83 +665,170 @@ public class VoiceAssistantService extends Service {
         } catch (Exception e) {
             Log.e(TAG, "Error in performScreenCapture", e);
             Toast.makeText(this, "截图失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
+            isCapturingScreen = false;
         }
     }
     
     private void captureScreenWithMediaProjection(int screenWidth, int screenHeight, int screenDensity) {
         Log.d(TAG, "captureScreenWithMediaProjection called");
         
-        // 创建ImageReader，使用RGBA_8888格式确保颜色正确，设置为1确保只有一张图像
-        ImageReader imageReader = ImageReader.newInstance(screenWidth, screenHeight, PixelFormat.RGBA_8888, 1);
-        
-        // 使用AtomicBoolean确保只处理一次截图
-        final java.util.concurrent.atomic.AtomicBoolean screenshotProcessed = new java.util.concurrent.atomic.AtomicBoolean(false);
-        
-        imageReader.setOnImageAvailableListener(new ImageReader.OnImageAvailableListener() {
-            @Override
-            public void onImageAvailable(ImageReader reader) {
-                // 确保只处理一次截图
-                if (!screenshotProcessed.compareAndSet(false, true)) {
-                    Log.d(TAG, "Screenshot already processed, skipping");
-                    return;
-                }
-                
-                Log.d(TAG, "Image available in ImageReader");
-                Image image = null;
-                try {
-                    image = reader.acquireLatestImage();
-                    if (image != null) {
-                        Log.d(TAG, "Image acquired successfully, format: " + image.getFormat());
-                        
-                        // 使用改进的图像转换方法
-                        Bitmap bitmap = convertImageToBitmap(image);
-                        if (bitmap != null && !bitmap.isRecycled()) {
-                            Log.d(TAG, "Bitmap conversion successful, size: " + bitmap.getWidth() + "x" + bitmap.getHeight());
-                            saveScreenshot(bitmap);
-                            showScreenshotAnimation();
-                        } else {
-                            Log.e(TAG, "Bitmap conversion failed or bitmap is recycled");
-                            Toast.makeText(VoiceAssistantService.this, "截图转换失败", Toast.LENGTH_SHORT).show();
-                        }
-                    } else {
-                        Log.e(TAG, "Failed to acquire image");
-                    }
-                } catch (Exception e) {
-                    Log.e(TAG, "Error processing image", e);
-                } finally {
-                    if (image != null) {
-                        image.close();
-                    }
-                    // 延迟清理资源，确保截图完成
-                    new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                        try {
-                            if (virtualDisplay != null) {
-                                virtualDisplay.release();
-                                virtualDisplay = null;
-                            }
-                            if (imageReader != null) {
-                                imageReader.close();
-                            }
-                        } catch (Exception e) {
-                            Log.e(TAG, "Error cleaning up resources", e);
-                        }
-                    }, 500);
+        try {
+            // 检查是否需要重新创建ImageReader和VirtualDisplay
+            boolean needsRecreation = false;
+            
+            if (imageReader == null) {
+                needsRecreation = true;
+                Log.d(TAG, "ImageReader is null, needs creation");
+            } else {
+                // 检查尺寸是否匹配
+                if (imageReader.getWidth() != screenWidth || imageReader.getHeight() != screenHeight) {
+                    Log.d(TAG, "Screen dimensions changed, recreating ImageReader");
+                    imageReader.close();
+                    imageReader = null;
+                    needsRecreation = true;
                 }
             }
-        }, backgroundHandler);
+            
+            if (virtualDisplay == null) {
+                needsRecreation = true;
+                Log.d(TAG, "VirtualDisplay is null, needs creation");
+            }
+            
+            // 创建或重用ImageReader
+            if (needsRecreation && imageReader == null) {
+                Log.d(TAG, "Creating new ImageReader");
+                imageReader = ImageReader.newInstance(screenWidth, screenHeight, PixelFormat.RGBA_8888, 2);
+                
+                // 设置ImageReader监听器（只在需要重新创建时设置）
+                imageReader.setOnImageAvailableListener(new ImageReader.OnImageAvailableListener() {
+                    private final java.util.concurrent.atomic.AtomicBoolean screenshotTaken = new java.util.concurrent.atomic.AtomicBoolean(false);
+                    
+                    @Override
+                    public void onImageAvailable(ImageReader reader) {
+                        // 确保只处理一次截图
+                        if (!screenshotTaken.compareAndSet(false, true)) {
+                            Log.d(TAG, "Screenshot already taken, ignoring additional images");
+                            return;
+                        }
+                        
+                        Log.d(TAG, "Processing single screenshot image");
+                        Image image = null;
+                        try {
+                            image = reader.acquireLatestImage();
+                            if (image != null) {
+                                Log.d(TAG, "Image acquired successfully, format: " + image.getFormat());
+                                
+                                // 使用改进的图像转换方法
+                                Bitmap bitmap = convertImageToBitmap(image);
+                                if (bitmap != null && !bitmap.isRecycled()) {
+                                    Log.d(TAG, "Bitmap conversion successful, size: " + bitmap.getWidth() + "x" + bitmap.getHeight());
+                                    saveScreenshot(bitmap);
+                                    showScreenshotAnimation();
+                                } else {
+                                    Log.e(TAG, "Bitmap conversion failed or bitmap is recycled");
+                                    new Handler(Looper.getMainLooper()).post(() -> {
+                                        Toast.makeText(VoiceAssistantService.this, "截图转换失败", Toast.LENGTH_SHORT).show();
+                                    });
+                                }
+                            } else {
+                                Log.e(TAG, "Failed to acquire image");
+                                new Handler(Looper.getMainLooper()).post(() -> {
+                                    Toast.makeText(VoiceAssistantService.this, "获取图像失败", Toast.LENGTH_SHORT).show();
+                                });
+                            }
+                        } catch (Exception e) {
+                            Log.e(TAG, "Error processing image", e);
+                            new Handler(Looper.getMainLooper()).post(() -> {
+                                Toast.makeText(VoiceAssistantService.this, "处理图像时出错: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                            });
+                        } finally {
+                            if (image != null) {
+                                image.close();
+                            }
+                            
+                            // 截图完成后立即清理VirtualDisplay以停止录屏
+                            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                                if (virtualDisplay != null) {
+                                    Log.d(TAG, "Releasing VirtualDisplay after screenshot completion");
+                                    virtualDisplay.release();
+                                    virtualDisplay = null;
+                                }
+                                // 重置截图状态
+                                isCapturingScreen = false;
+                                Log.d(TAG, "Screenshot capture completed and VirtualDisplay released");
+                            }, 100); // 短暂延迟确保截图处理完成
+                        }
+                    }
+                }, backgroundHandler);
+            }
         
-        // 创建VirtualDisplay
-        virtualDisplay = mediaProjection.createVirtualDisplay(
-            "ScreenCapture",
-            screenWidth, screenHeight, screenDensity,
-            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-            imageReader.getSurface(), null, backgroundHandler
-        );
-        
-        if (virtualDisplay != null) {
-            Log.d(TAG, "VirtualDisplay created successfully");
-        } else {
-            Log.e(TAG, "Failed to create VirtualDisplay");
+            // 每次截图都需要创建新的VirtualDisplay（因为截图后会立即释放）
+            if (true) { // 总是重新创建VirtualDisplay以确保单次截图
+                try {
+                    // 清理旧的VirtualDisplay
+                    if (virtualDisplay != null) {
+                        Log.d(TAG, "Releasing old VirtualDisplay");
+                        virtualDisplay.release();
+                        virtualDisplay = null;
+                    }
+                    
+                    Log.d(TAG, "Creating VirtualDisplay with MediaProjection for single screenshot");
+                    virtualDisplay = mediaProjection.createVirtualDisplay(
+                        "ScreenCapture",
+                        screenWidth, screenHeight, screenDensity,
+                        DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY | DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC,
+                        imageReader.getSurface(), null, backgroundHandler
+                    );
+                    
+                    if (virtualDisplay != null) {
+                        Log.d(TAG, "VirtualDisplay created successfully");
+                    } else {
+                        Log.e(TAG, "Failed to create VirtualDisplay");
+                        isCapturingScreen = false;
+                        new Handler(Looper.getMainLooper()).post(() -> {
+                            Toast.makeText(VoiceAssistantService.this, "截图失败：无法创建虚拟显示", Toast.LENGTH_SHORT).show();
+                        });
+                        if (imageReader != null) {
+                            imageReader.close();
+                            imageReader = null;
+                        }
+                        return;
+                    }
+                } catch (SecurityException e) {
+                    Log.e(TAG, "SecurityException when creating VirtualDisplay: " + e.getMessage());
+                    isCapturingScreen = false;
+                    
+                    // MediaProjection已过期，需要重新授权
+                    new Handler(Looper.getMainLooper()).post(() -> {
+                        Toast.makeText(VoiceAssistantService.this, "截图权限已过期，正在重新申请权限", Toast.LENGTH_SHORT).show();
+                    });
+                    if (imageReader != null) {
+                        imageReader.close();
+                        imageReader = null;
+                    }
+                    requestNewMediaProjectionPermission();
+                    return;
+                } catch (Exception e) {
+                    Log.e(TAG, "Unexpected error creating VirtualDisplay: " + e.getMessage());
+                    isCapturingScreen = false;
+                    new Handler(Looper.getMainLooper()).post(() -> {
+                        Toast.makeText(VoiceAssistantService.this, "创建虚拟显示时发生错误: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                    });
+                    if (imageReader != null) {
+                        imageReader.close();
+                        imageReader = null;
+                    }
+                    return;
+                }
+            } else {
+                Log.d(TAG, "Reusing existing VirtualDisplay");
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error in captureScreenWithMediaProjection: " + e.getMessage());
+            isCapturingScreen = false;
+            new Handler(Looper.getMainLooper()).post(() -> {
+                Toast.makeText(VoiceAssistantService.this, "截图过程中发生错误: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            });
         }
     }
     
