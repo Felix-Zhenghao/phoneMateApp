@@ -80,6 +80,11 @@ public class VoiceAssistantService extends Service {
     private boolean isCapturingScreen = false;
     private long lastCaptureTime = 0;
     private static final long CAPTURE_COOLDOWN = 1000; // 1秒冷却时间
+    
+    // 持续录屏相关变量
+    private boolean isContinuousRecording = false; // 是否正在持续录屏
+    private boolean shouldSaveNextFrame = false; // 是否应该保存下一帧
+    private boolean isScreenRecordingInitialized = false; // 录屏是否已初始化
     private boolean isRecording = false;
     private Thread recordingThread;
     private WaveformView waveformView;
@@ -174,7 +179,10 @@ public class VoiceAssistantService extends Service {
                                 Log.d(TAG, "MediaProjection callback registered");
                             }
                             
-                            String message = isUpdate ? "截图权限已更新，可以继续使用截图功能" : "屏幕录制权限已获取，截图功能可用";
+                            // 立即启动持续录屏
+                            startContinuousScreenRecording();
+                            
+                            String message = isUpdate ? "截图权限已更新，持续录屏已启动" : "屏幕录制权限已获取，持续录屏已启动";
                             new Handler(Looper.getMainLooper()).post(() -> {
                                 Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
                             });
@@ -560,6 +568,13 @@ public class VoiceAssistantService extends Service {
     private void cleanupMediaProjectionResources() {
         Log.d(TAG, "Cleaning up MediaProjection resources");
         
+        // 在持续录屏模式下，不清理VirtualDisplay和ImageReader
+        if (isContinuousRecording) {
+            Log.d(TAG, "Continuous recording active, skipping VirtualDisplay and ImageReader cleanup");
+            isCapturingScreen = false;
+            return;
+        }
+        
         // 清理VirtualDisplay
         if (virtualDisplay != null) {
             try {
@@ -592,8 +607,34 @@ public class VoiceAssistantService extends Service {
     private void cleanupAllMediaProjectionResources() {
         Log.d(TAG, "Cleaning up ALL MediaProjection resources");
         
-        // 先清理VirtualDisplay和ImageReader
-        cleanupMediaProjectionResources();
+        // 停止持续录屏
+        if (isContinuousRecording) {
+            Log.d(TAG, "Stopping continuous recording");
+            isContinuousRecording = false;
+            isScreenRecordingInitialized = false;
+            shouldSaveNextFrame = false;
+        }
+        
+        // 强制清理VirtualDisplay和ImageReader（忽略持续录屏状态）
+        if (virtualDisplay != null) {
+            try {
+                virtualDisplay.release();
+                Log.d(TAG, "VirtualDisplay released");
+            } catch (Exception e) {
+                Log.e(TAG, "Error releasing VirtualDisplay", e);
+            }
+            virtualDisplay = null;
+        }
+        
+        if (imageReader != null) {
+            try {
+                imageReader.close();
+                Log.d(TAG, "ImageReader closed");
+            } catch (Exception e) {
+                Log.e(TAG, "Error closing ImageReader", e);
+            }
+            imageReader = null;
+        }
         
         // 然后清理MediaProjection
         if (mediaProjection != null) {
@@ -609,6 +650,115 @@ public class VoiceAssistantService extends Service {
                 Log.e(TAG, "Error stopping MediaProjection", e);
             }
             mediaProjection = null;
+        }
+        
+        isCapturingScreen = false;
+    }
+    
+    private void startContinuousScreenRecording() {
+        Log.d(TAG, "startContinuousScreenRecording called");
+        
+        if (mediaProjection == null) {
+            Log.e(TAG, "MediaProjection is null, cannot start continuous recording");
+            return;
+        }
+        
+        if (isContinuousRecording) {
+            Log.d(TAG, "Continuous recording already started");
+            return;
+        }
+        
+        try {
+            // 获取屏幕尺寸
+            WindowManager windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
+            if (windowManager == null) {
+                Log.e(TAG, "WindowManager is null");
+                return;
+            }
+            
+            DisplayMetrics metrics = new DisplayMetrics();
+            windowManager.getDefaultDisplay().getMetrics(metrics);
+            int screenWidth = metrics.widthPixels;
+            int screenHeight = metrics.heightPixels;
+            int screenDensity = metrics.densityDpi;
+            
+            Log.d(TAG, "Screen dimensions for continuous recording: " + screenWidth + "x" + screenHeight + ", density: " + screenDensity);
+            
+            // 创建ImageReader用于持续录屏
+            if (imageReader != null) {
+                imageReader.close();
+            }
+            
+            imageReader = ImageReader.newInstance(screenWidth, screenHeight, PixelFormat.RGBA_8888, 2);
+            
+            // 设置ImageReader监听器 - 持续接收帧但只在需要时保存
+            imageReader.setOnImageAvailableListener(new ImageReader.OnImageAvailableListener() {
+                @Override
+                public void onImageAvailable(ImageReader reader) {
+                    Image image = null;
+                    try {
+                        image = reader.acquireLatestImage();
+                        if (image != null) {
+                            // 只有当shouldSaveNextFrame为true时才保存帧
+                            if (shouldSaveNextFrame) {
+                                Log.d(TAG, "Saving frame from continuous recording");
+                                shouldSaveNextFrame = false; // 重置标志
+                                
+                                Bitmap bitmap = convertImageToBitmap(image);
+                                if (bitmap != null && !bitmap.isRecycled()) {
+                                    Log.d(TAG, "Frame conversion successful, size: " + bitmap.getWidth() + "x" + bitmap.getHeight());
+                                    saveScreenshot(bitmap);
+                                    showScreenshotAnimation();
+                                } else {
+                                    Log.e(TAG, "Frame conversion failed or bitmap is recycled");
+                                    new Handler(Looper.getMainLooper()).post(() -> {
+                                        Toast.makeText(VoiceAssistantService.this, "截图转换失败", Toast.LENGTH_SHORT).show();
+                                    });
+                                }
+                                
+                                // 重置截图状态
+                                isCapturingScreen = false;
+                            }
+                            // 如果shouldSaveNextFrame为false，则丢弃这一帧（不做任何处理）
+                        }
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error processing continuous recording frame", e);
+                    } finally {
+                        if (image != null) {
+                            image.close();
+                        }
+                    }
+                }
+            }, backgroundHandler);
+            
+            // 创建VirtualDisplay开始持续录屏
+            if (virtualDisplay != null) {
+                virtualDisplay.release();
+            }
+            
+            virtualDisplay = mediaProjection.createVirtualDisplay(
+                "ContinuousScreenRecording",
+                screenWidth, screenHeight, screenDensity,
+                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                imageReader.getSurface(), null, backgroundHandler
+            );
+            
+            if (virtualDisplay != null) {
+                isContinuousRecording = true;
+                isScreenRecordingInitialized = true;
+                Log.d(TAG, "Continuous screen recording started successfully");
+            } else {
+                Log.e(TAG, "Failed to create VirtualDisplay for continuous recording");
+                if (imageReader != null) {
+                    imageReader.close();
+                    imageReader = null;
+                }
+            }
+            
+        } catch (Exception e) {
+            Log.e(TAG, "Error starting continuous screen recording", e);
+            isContinuousRecording = false;
+            isScreenRecordingInitialized = false;
         }
     }
     
@@ -642,6 +792,36 @@ public class VoiceAssistantService extends Service {
             isCapturingScreen = true;
             
             Log.d(TAG, "MediaProjection is available, proceeding with screenshot");
+            
+            // 如果持续录屏已启动，只需设置保存下一帧的标志
+            if (isContinuousRecording && isScreenRecordingInitialized) {
+                Log.d(TAG, "Using continuous recording mode, setting save flag");
+                shouldSaveNextFrame = true;
+                Toast.makeText(this, "正在从录屏流中捕获截图...", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            
+            // 如果持续录屏未启动，则启动它
+            if (!isContinuousRecording) {
+                Log.d(TAG, "Starting continuous recording for first screenshot");
+                startContinuousScreenRecording();
+                
+                // 等待录屏初始化完成后再设置保存标志
+                new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                    if (isScreenRecordingInitialized) {
+                        shouldSaveNextFrame = true;
+                        Toast.makeText(this, "录屏已启动，正在捕获截图...", Toast.LENGTH_SHORT).show();
+                    } else {
+                        Log.e(TAG, "Failed to initialize screen recording");
+                        isCapturingScreen = false;
+                        Toast.makeText(this, "启动录屏失败", Toast.LENGTH_SHORT).show();
+                    }
+                }, 500); // 等待500ms让录屏初始化
+                return;
+            }
+            
+            // 备用方案：使用原有的单次截图方式
+            Log.d(TAG, "Falling back to single screenshot mode");
             
             // 获取屏幕尺寸
             WindowManager windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
