@@ -43,6 +43,7 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
+import androidx.appcompat.app.AlertDialog
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
@@ -55,6 +56,7 @@ import kotlin.math.min
 import android.content.ContentValues
 import android.Manifest
 import android.content.pm.PackageManager
+import com.example.phonematetry.inference.ScreenshotInferenceManager
 
 class VoiceAssistantService : Service() {
 
@@ -80,6 +82,7 @@ class VoiceAssistantService : Service() {
     private var lastCaptureTime = 0L
     private val CAPTURE_COOLDOWN = 1000L // 1秒冷却时间
     private var isCapturing = false
+    private lateinit var screenshotInferenceManager: ScreenshotInferenceManager
 
     private val NOTIFICATION_ID = 1
     private val CHANNEL_ID = "voice_assistant_channel"
@@ -95,16 +98,19 @@ class VoiceAssistantService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, createNotification())
-
+        
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         setupFloatingWindow()
         startAudioRecording()
+        initializeScreenshotInference()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         intent?.let {
             if (it.hasExtra("mediaProjectionIntent")) {
+                // 先启动前台服务，然后再获取媒体投影
+                startForeground(NOTIFICATION_ID, createNotification())
+                
                 val projectionIntent = it.getParcelableExtra<Intent>("mediaProjectionIntent") ?: return START_STICKY
                 val mediaProjectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
                 mediaProjection = mediaProjectionManager.getMediaProjection(Activity.RESULT_OK, projectionIntent)
@@ -115,6 +121,7 @@ class VoiceAssistantService : Service() {
                 }
             }
         }
+        
         return START_STICKY
     }
 
@@ -123,6 +130,9 @@ class VoiceAssistantService : Service() {
         stopAudioRecording()
         removeFloatingWindow()
         stopContinuousScreenRecording()
+        if (::screenshotInferenceManager.isInitialized) {
+            screenshotInferenceManager.destroy()
+        }
         mediaProjection?.stop()
         mediaProjection = null
         isMediaProjectionCallbackRegistered = false
@@ -173,11 +183,11 @@ class VoiceAssistantService : Service() {
         setupTouchListeners()
 
         btnCapture.setOnClickListener {
-            performScreenCapture()
+            performScreenshotQuery()
         }
 
         btnClose.setOnClickListener {
-            stopSelf()
+            showCloseConfirmationDialog()
         }
     }
 
@@ -211,6 +221,35 @@ class VoiceAssistantService : Service() {
         if (::floatingView.isInitialized) {
             windowManager.removeView(floatingView)
         }
+    }
+    
+    private fun showCloseConfirmationDialog() {
+        // 创建自定义确认对话框视图
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_close_confirmation, null)
+        
+        val dialogParams = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            PixelFormat.TRANSLUCENT
+        )
+        
+        dialogParams.gravity = Gravity.CENTER
+        
+        val btnConfirm = dialogView.findViewById<Button>(R.id.btnConfirm)
+        val btnCancel = dialogView.findViewById<Button>(R.id.btnCancel)
+        
+        btnConfirm.setOnClickListener {
+            windowManager.removeView(dialogView)
+            stopSelf()
+        }
+        
+        btnCancel.setOnClickListener {
+            windowManager.removeView(dialogView)
+        }
+        
+        windowManager.addView(dialogView, dialogParams)
     }
 
     private fun startAudioRecording() {
@@ -323,6 +362,123 @@ class VoiceAssistantService : Service() {
         saveCurrentFrame()
     }
 
+    private fun initializeScreenshotInference() {
+        // 初始化时禁用按钮并显示加载状态
+        btnCapture.isEnabled = false
+        btnCapture.text = "正在加载助手"
+        
+        screenshotInferenceManager = ScreenshotInferenceManager(this)
+        screenshotInferenceManager.initialize(object : ScreenshotInferenceManager.ScreenshotInferenceListener {
+            override fun onModelInitialized() {
+                handler.post {
+                    btnCapture.isEnabled = true
+                    btnCapture.text = "截图询问"
+                }
+            }
+            
+            override fun onInferenceStart() {
+                handler.post {
+                    Toast.makeText(this@VoiceAssistantService, "开始分析截图...", Toast.LENGTH_SHORT).show()
+                    btnCapture.isEnabled = false
+                    btnCapture.text = "分析中..."
+                }
+            }
+            
+            override fun onInferenceProgress(partialText: String) {
+                // 可以在这里显示推理进度，暂时不做处理
+            }
+            
+            override fun onInferenceComplete(fullText: String) {
+                handler.post {
+                    btnCapture.isEnabled = true
+                    btnCapture.text = "截图询问"
+                    Toast.makeText(this@VoiceAssistantService, "分析完成", Toast.LENGTH_SHORT).show()
+                }
+            }
+            
+            override fun onInferenceError(error: String) {
+                handler.post {
+                    btnCapture.isEnabled = true
+                    btnCapture.text = "截图询问"
+                    Toast.makeText(this@VoiceAssistantService, "分析失败: $error", Toast.LENGTH_LONG).show()
+                }
+            }
+            
+            override fun onTTSStart() {
+                handler.post {
+                    Toast.makeText(this@VoiceAssistantService, "开始语音播放", Toast.LENGTH_SHORT).show()
+                }
+            }
+            
+            override fun onTTSComplete() {
+                handler.post {
+                    Toast.makeText(this@VoiceAssistantService, "语音播放完成", Toast.LENGTH_SHORT).show()
+                }
+            }
+            
+            override fun onTTSError(error: String) {
+                handler.post {
+                    Toast.makeText(this@VoiceAssistantService, "语音播放失败: $error", Toast.LENGTH_LONG).show()
+                }
+            }
+        })
+    }
+    
+    private fun performScreenshotQuery() {
+        val currentTime = System.currentTimeMillis()
+        if (currentTime - lastCaptureTime < CAPTURE_COOLDOWN || isCapturing) {
+            return
+        }
+        isCapturing = true
+        lastCaptureTime = currentTime
+
+        if (mediaProjection == null) {
+            requestMediaProjectionPermission()
+            isCapturing = false
+            return
+        }
+
+        if (!checkStoragePermission()) {
+            isCapturing = false
+            return
+        }
+
+        // 确保持续录屏已启动
+        if (!isContinuousRecording) {
+            startContinuousScreenRecording()
+        }
+        
+        // 获取当前帧并进行推理
+        captureAndAnalyzeFrame()
+    }
+    
+    private fun captureAndAnalyzeFrame() {
+        // 临时隐藏浮窗以避免截进去
+        floatingView.visibility = View.GONE
+        
+        // 延迟一小段时间确保浮窗完全隐藏
+        handler.postDelayed({
+            val image = imageReader?.acquireLatestImage()
+            if (image != null) {
+                val bitmap = imageToBitmap(image)
+                image.close()
+                
+                // 恢复浮窗显示
+                floatingView.visibility = View.VISIBLE
+                
+                // 显示截图动画
+                showScreenshotAnimation()
+                
+                // 开始推理
+                screenshotInferenceManager.processScreenshot(bitmap)
+            } else {
+                // 如果获取图像失败，也要恢复浮窗显示
+                floatingView.visibility = View.VISIBLE
+            }
+            isCapturing = false
+        }, 100) // 延迟100毫秒
+    }
+    
     private fun saveCurrentFrame() {
         val image = imageReader?.acquireLatestImage()
         if (image != null) {

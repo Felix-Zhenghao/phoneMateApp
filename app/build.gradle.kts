@@ -45,6 +45,23 @@ dependencies {
     // 添加权限处理相关依赖
     implementation("androidx.core:core-ktx:1.12.0")
     
+    // WorkManager for background downloads
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
+    
+    // Lifecycle components for observing data
+    implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.7.0")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0")
+    
+    // Guava for ListenableFuture and MoreExecutors
+    implementation("com.google.guava:guava:32.1.3-android")
+    
+    // MediaPipe and TensorFlow Lite dependencies for LLM inference
+    implementation("com.google.mediapipe:tasks-genai:0.10.25")
+    implementation("com.google.mediapipe:tasks-text:0.10.21")
+    implementation("org.tensorflow:tensorflow-lite:2.16.1")
+    implementation("org.tensorflow:tensorflow-lite-gpu:2.16.1")
+    implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
+    
     testImplementation(libs.junit)
     androidTestImplementation(libs.ext.junit)
     androidTestImplementation(libs.espresso.core)

@@ -16,9 +16,92 @@
         android:textSize="18sp"
         android:textColor="#666666"
         android:layout_marginBottom="32dp"
-        app:layout_constraintBottom_toTopOf="@+id/btnStartAssistant"
+        app:layout_constraintBottom_toTopOf="@+id/downloadContainer"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent" />
+
+    <!-- 下载进度容器 -->
+    <LinearLayout
+        android:id="@+id/downloadContainer"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_marginHorizontal="32dp"
+        android:layout_marginBottom="32dp"
+        app:layout_constraintBottom_toTopOf="@+id/btnStartAssistant"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent">
+
+        <!-- 下载状态文本 -->
+        <TextView
+            android:id="@+id/tvDownloadStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="检查模型状态..."
+            android:textSize="16sp"
+            android:textColor="#333333"
+            android:gravity="center"
+            android:layout_marginBottom="16dp" />
+
+        <!-- 进度条 -->
+        <ProgressBar
+            android:id="@+id/progressBar"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="8dp"
+            android:layout_marginBottom="8dp"
+            android:max="100"
+            android:progress="0"
+            android:progressTint="#4CAF50"
+            android:progressBackgroundTint="#E0E0E0" />
+
+        <!-- 下载进度文本 -->
+        <TextView
+            android:id="@+id/tvDownloadProgress"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="0 MB / 0 MB (0%)"
+            android:textSize="14sp"
+            android:textColor="#666666"
+            android:gravity="center"
+            android:layout_marginBottom="4dp"
+            android:visibility="gone" />
+
+        <!-- 下载速度文本 -->
+        <TextView
+            android:id="@+id/tvDownloadSpeed"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="下载速度: 0 KB/s | 剩余时间: --"
+            android:textSize="12sp"
+            android:textColor="#999999"
+            android:gravity="center"
+            android:layout_marginBottom="16dp"
+            android:visibility="gone" />
+
+        <!-- 按钮容器 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:layout_marginTop="8dp">
+
+            <!-- 重试按钮 -->
+            <Button
+                android:id="@+id/btnRetryDownload"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:text="重试下载"
+                android:textSize="14sp"
+                android:textColor="#FFFFFF"
+                android:background="@drawable/button_background"
+                android:paddingHorizontal="24dp"
+                android:visibility="gone" />
+
+        </LinearLayout>
+
+    </LinearLayout>
 
     <Button
         android:id="@+id/btnStartAssistant"

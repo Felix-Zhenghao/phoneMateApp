@@ -10,6 +10,8 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Button
+import android.widget.ProgressBar
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
@@ -18,6 +20,9 @@ import androidx.core.content.ContextCompat
 import androidx.core.graphics.Insets
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.lifecycle.Observer
+import com.example.phonematetry.data.ModelDownloadStatusType
+import com.example.phonematetry.ModelDownloadManager
 
 class MainActivity : AppCompatActivity() {
 
@@ -26,9 +31,15 @@ class MainActivity : AppCompatActivity() {
     private val STORAGE_PERMISSION_REQUEST_CODE = 1003
     private val MEDIA_PROJECTION_REQUEST_CODE = 1004
     private lateinit var btnStartAssistant: Button
+    private lateinit var progressBar: ProgressBar
+    private lateinit var tvDownloadStatus: TextView
+    private lateinit var tvDownloadProgress: TextView
+    private lateinit var tvDownloadSpeed: TextView
+    private lateinit var btnRetryDownload: Button
 
     private lateinit var mediaProjectionManager: MediaProjectionManager
     private var mediaProjectionIntent: Intent? = null
+    private lateinit var modelDownloadManager: ModelDownloadManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -42,8 +53,12 @@ class MainActivity : AppCompatActivity() {
         }
 
         mediaProjectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+        
+        // 初始化模型下载管理器
+        modelDownloadManager = ModelDownloadManager(this)
 
         initViews()
+        setupDownloadObservers()
 
         // 检查是否是从Service请求重新获取MediaProjection权限
         if (intent.getBooleanExtra("requestMediaProjection", false)) {
@@ -56,7 +71,90 @@ class MainActivity : AppCompatActivity() {
 
     private fun initViews() {
         btnStartAssistant = findViewById(R.id.btnStartAssistant)
+        progressBar = findViewById(R.id.progressBar)
+        tvDownloadStatus = findViewById(R.id.tvDownloadStatus)
+        tvDownloadProgress = findViewById(R.id.tvDownloadProgress)
+        tvDownloadSpeed = findViewById(R.id.tvDownloadSpeed)
+        btnRetryDownload = findViewById(R.id.btnRetryDownload)
+        
         btnStartAssistant.setOnClickListener { startVoiceAssistant() }
+        btnRetryDownload.setOnClickListener { modelDownloadManager.retryDownload() }
+        
+        // 初始状态下禁用启动按钮
+        btnStartAssistant.isEnabled = false
+    }
+    
+    private fun setupDownloadObservers() {
+        // 监听下载状态变化
+        modelDownloadManager.downloadStatus.observe(this, Observer { status ->
+            updateDownloadUI(status)
+        })
+        
+        // 监听模型是否准备就绪
+        modelDownloadManager.isModelReady.observe(this, Observer { isReady ->
+            btnStartAssistant.isEnabled = isReady
+            if (isReady) {
+                tvDownloadStatus.text = "模型已准备就绪，可以启动APP"
+                progressBar.visibility = android.view.View.GONE
+                tvDownloadProgress.visibility = android.view.View.GONE
+                tvDownloadSpeed.visibility = android.view.View.GONE
+                btnRetryDownload.visibility = android.view.View.GONE
+            }
+        })
+    }
+    
+    private fun updateDownloadUI(status: com.example.phonematetry.data.ModelDownloadStatus) {
+        when (status.status) {
+            ModelDownloadStatusType.NOT_DOWNLOADED -> {
+                tvDownloadStatus.text = "准备下载模型..."
+                progressBar.visibility = android.view.View.VISIBLE
+                progressBar.progress = 0
+                tvDownloadProgress.visibility = android.view.View.GONE
+                tvDownloadSpeed.visibility = android.view.View.GONE
+                btnRetryDownload.visibility = android.view.View.GONE
+            }
+            ModelDownloadStatusType.IN_PROGRESS -> {
+                val progress = modelDownloadManager.getDownloadProgress()
+                tvDownloadStatus.text = "正在下载模型..."
+                progressBar.visibility = android.view.View.VISIBLE
+                progressBar.progress = progress
+                
+                val progressText = "${modelDownloadManager.formatFileSize(status.receivedBytes)} / ${modelDownloadManager.formatFileSize(status.totalBytes)} ($progress%)"
+                tvDownloadProgress.text = progressText
+                tvDownloadProgress.visibility = android.view.View.VISIBLE
+                
+                val speedText = "下载速度: ${modelDownloadManager.formatDownloadSpeed(status.bytesPerSecond)}"
+                val remainingText = "剩余时间: ${modelDownloadManager.formatRemainingTime(status.remainingMs)}"
+                tvDownloadSpeed.text = "$speedText | $remainingText"
+                tvDownloadSpeed.visibility = android.view.View.VISIBLE
+                btnRetryDownload.visibility = android.view.View.GONE
+            }
+            ModelDownloadStatusType.UNZIPPING -> {
+                tvDownloadStatus.text = "正在解压模型..."
+                progressBar.visibility = android.view.View.VISIBLE
+                progressBar.isIndeterminate = true
+                tvDownloadProgress.visibility = android.view.View.GONE
+                tvDownloadSpeed.visibility = android.view.View.GONE
+                btnRetryDownload.visibility = android.view.View.GONE
+            }
+            ModelDownloadStatusType.SUCCEEDED -> {
+                tvDownloadStatus.text = "模型下载完成！"
+                progressBar.visibility = android.view.View.GONE
+                tvDownloadProgress.visibility = android.view.View.GONE
+                tvDownloadSpeed.visibility = android.view.View.GONE
+                btnRetryDownload.visibility = android.view.View.GONE
+            }
+            ModelDownloadStatusType.FAILED -> {
+                tvDownloadStatus.text = "模型下载失败: ${status.errorMessage}"
+                progressBar.visibility = android.view.View.GONE
+                tvDownloadProgress.visibility = android.view.View.GONE
+                tvDownloadSpeed.visibility = android.view.View.GONE
+                btnRetryDownload.visibility = android.view.View.VISIBLE
+            }
+            else -> {
+                // Handle other states if needed
+            }
+        }
     }
 
     private fun checkPermissions() {
@@ -93,16 +191,19 @@ class MainActivity : AppCompatActivity() {
         }
 
         // 存储权限已有，检查悬浮窗权限
-        checkOverlayPermission()
+        checkOverlayPermissionAndStartDownload()
     }
 
-    private fun checkOverlayPermission() {
+    private fun checkOverlayPermissionAndStartDownload() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (!Settings.canDrawOverlays(this)) {
                 val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + packageName))
                 startActivityForResult(intent, OVERLAY_PERMISSION_REQUEST_CODE)
+                return
             }
         }
+        // 权限检查完成，开始模型下载检查
+        modelDownloadManager.checkAndDownloadModel()
     }
 
     private fun startVoiceAssistant() {
@@ -230,7 +331,7 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "存储权限被拒绝，无法保存截图", Toast.LENGTH_SHORT).show()
             }
             // 继续检查悬浮窗权限
-            checkOverlayPermission()
+            checkOverlayPermissionAndStartDownload()
         }
     }
 
@@ -245,8 +346,9 @@ class MainActivity : AppCompatActivity() {
                     Toast.makeText(this, "悬浮窗权限被拒绝，无法显示助手界面", Toast.LENGTH_SHORT).show()
                 }
             }
-            // 权限检查完成，显示最终状态
+            // 权限检查完成，显示最终状态并开始模型下载检查
             showPermissionStatus()
+            modelDownloadManager.checkAndDownloadModel()
         } else if (requestCode == MEDIA_PROJECTION_REQUEST_CODE) {
             if (resultCode == RESULT_OK) {
                 mediaProjectionIntent = data
