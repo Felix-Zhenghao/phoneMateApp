@@ -155,6 +155,83 @@ object LlmInferenceManager {
         Log.d(TAG, "Clean up done.")
     }
 
+    /**
+     * 预填充阶段：只处理图片，为后续推理做准备
+     */
+    fun prefillImage(
+        model: Model,
+        image: Bitmap?,
+        cleanUpListener: InferenceCleanUpListener
+    ): Boolean {
+        val instance = model.instance as LlmModelInstance
+
+        // Set listener.
+        if (!cleanUpListeners.containsKey(model.name)) {
+            cleanUpListeners[model.name] = cleanUpListener
+        }
+
+        try {
+            val session = instance.session
+            
+            // Add image if provided
+            image?.let {
+                Log.d(TAG, "Prefilling image to inference session")
+                session.addImage(BitmapImageBuilder(it).build())
+                return true
+            }
+            
+            Log.w(TAG, "No image provided for prefill")
+            return false
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to prefill image", e)
+            cleanUpListener.invoke()
+            return false
+        }
+    }
+
+    /**
+     * 完整推理阶段：处理文本并生成响应
+     */
+    fun runTextInference(
+        model: Model,
+        prompt: String,
+        resultListener: InferenceResultListener,
+        cleanUpListener: InferenceCleanUpListener
+    ) {
+        val instance = model.instance as LlmModelInstance
+
+        // Set listener.
+        if (!cleanUpListeners.containsKey(model.name)) {
+            cleanUpListeners[model.name] = cleanUpListener
+        }
+
+        try {
+            val session = instance.session
+            
+            // Add text prompt
+            if (prompt.trim().isNotEmpty()) {
+                session.addQueryChunk(prompt)
+            }
+            
+            // Start async inference
+            // Note: In this MediaPipe version, generateResponseAsync doesn't accept parameters
+            // We'll use synchronous generation for now
+            try {
+                val response = session.generateResponse()
+                resultListener(response, true)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to generate response", e)
+                throw e
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to run text inference", e)
+            cleanUpListener.invoke()
+        }
+    }
+
+    /**
+     * 原有的一次性推理方法，保持向后兼容
+     */
     fun runInference(
         model: Model,
         prompt: String,

@@ -32,6 +32,10 @@ class ScreenshotInferenceManager(private val context: Context) {
     // 存储历史ASR输入记录
     private val asrHistory = mutableListOf<String>()
     
+    // 两阶段推理状态
+    private var isImagePrefilled = false
+    private var pendingASRResult: String? = null
+    
     interface ScreenshotInferenceListener {
         fun onModelInitialized()
         fun onInferenceStart()
@@ -96,15 +100,76 @@ class ScreenshotInferenceManager(private val context: Context) {
     // 保存截图，等待ASR结果
     fun saveScreenshot(screenshot: Bitmap) {
         currentScreenshot = screenshot
-        Log.d(TAG, "Screenshot saved, waiting for ASR result")
+        Log.d(TAG, "Screenshot saved")
+        
+        // 立即进行图片预填充
+        prefillImageAsync(screenshot)
     }
+    
+    private fun prefillImageAsync(screenshot: Bitmap) {
+        if (!isModelInitialized) {
+            Log.w(TAG, "Model not initialized, skipping image prefill")
+            return
+        }
+        
+        coroutineScope.launch(Dispatchers.IO) {
+            try {
+                Log.d(TAG, "Starting image prefill...")
+                
+                // 等待模型实例准备就绪
+                while (model.instance == null) {
+                    delay(100)
+                }
+                
+                // 进行图片预填充（不重置session，保留图片在session中）
+                val success = LlmInferenceManager.prefillImage(
+                    model = model,
+                    image = screenshot,
+                    cleanUpListener = {
+                        isImagePrefilled = false
+                    }
+                )
+                
+                if (success) {
+                    isImagePrefilled = true
+                    Log.d(TAG, "Image prefill completed successfully")
+                    
+                    // 如果有待处理的ASR结果，立即进行文本推理
+                    pendingASRResult?.let { asrResult ->
+                        Log.d(TAG, "Processing pending ASR result after prefill")
+                        pendingASRResult = null
+                        processASRResultInternal(asrResult)
+                    }
+                } else {
+                    Log.w(TAG, "Image prefill failed")
+                    isImagePrefilled = false
+                }
+                
+            } catch (e: Exception) {
+                 Log.e(TAG, "Error during image prefill", e)
+                 isImagePrefilled = false
+             }
+         }
+     }
     
     // 处理ASR结果并开始推理
     fun processWithASRResult(asrResult: String) {
+        Log.d(TAG, "Processing ASR result: $asrResult")
+        
+        if (asrResult.trim().isEmpty()) {
+            Log.w(TAG, "ASR result is empty, ignoring")
+            return
+        }
+        
         currentASRResult = asrResult
         
         // 将当前ASR结果添加到历史记录中
         asrHistory.add(asrResult)
+        
+        // 如果历史记录过长，移除最旧的记录
+        if (asrHistory.size > 10) {
+            asrHistory.removeAt(0)
+        }
         
         // 确保TTS使用正确的语言
         ttsManager.updateLanguage()
@@ -125,6 +190,17 @@ class ScreenshotInferenceManager(private val context: Context) {
             return
         }
         
+        // 检查图片是否已经预填充
+        if (isImagePrefilled) {
+            Log.d(TAG, "Image already prefilled, starting text inference immediately")
+            processASRResultInternal(asrResult)
+        } else {
+            Log.d(TAG, "Image not prefilled yet, storing ASR result for later processing")
+            pendingASRResult = asrResult
+        }
+    }
+    
+    private fun processASRResultInternal(asrResult: String) {
         // 构造动态prompt，包含历史对话
         val dynamicPrompt = getDynamicPrompt(asrHistory)
         
@@ -141,21 +217,13 @@ class ScreenshotInferenceManager(private val context: Context) {
                     delay(100)
                 }
                 
-                // 安全地重置会话，确保每次都是新的对话
-                try {
-                    LlmInferenceManager.resetSession(model)
-                    delay(200) // 减少延迟时间
-                } catch (e: Exception) {
-                    Log.w(TAG, "Failed to reset session before inference, continuing anyway", e)
-                }
-                
                 var fullResponse = ""
                 var lastTTSText = ""
                 
-                LlmInferenceManager.runInference(
+                // 使用文本推理方法，因为图片已经在预填充阶段处理过了
+                LlmInferenceManager.runTextInference(
                     model = model,
                     prompt = dynamicPrompt,
-                    image = screenshot,
                     resultListener = { partialResult, done ->
                         fullResponse += partialResult
                         
@@ -184,19 +252,30 @@ class ScreenshotInferenceManager(private val context: Context) {
                             
                             isInferenceInProgress = false
                             
-                            // 清理当前的截图，但保留ASR历史记录
+                            // 重置session以准备下次推理
+                            try {
+                                LlmInferenceManager.resetSession(model)
+                                Log.d(TAG, "Session reset after inference completion")
+                            } catch (e: Exception) {
+                                Log.w(TAG, "Failed to reset session after inference", e)
+                            }
+                            
+                            // 清理状态，但保留ASR历史记录
                             currentScreenshot = null
                             currentASRResult = null
+                            isImagePrefilled = false
                         }
                     },
                     cleanUpListener = {
                         isInferenceInProgress = false
+                        isImagePrefilled = false
                     }
                 )
                 
             } catch (e: Exception) {
-                Log.e(TAG, "Error during inference", e)
+                Log.e(TAG, "Error during text inference", e)
                 isInferenceInProgress = false
+                isImagePrefilled = false
                 withContext(Dispatchers.Main) {
                     listener?.onInferenceError(getErrorMessage("inference_error") + ": ${e.message}")
                 }
@@ -292,6 +371,10 @@ class ScreenshotInferenceManager(private val context: Context) {
         // 清理当前的截图和ASR结果，但保留历史记录
         currentScreenshot = null
         currentASRResult = null
+        
+        // 清理两阶段推理状态
+        isImagePrefilled = false
+        pendingASRResult = null
         
         Log.d(TAG, "Inference stopped")
     }
