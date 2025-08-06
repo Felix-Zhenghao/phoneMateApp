@@ -8,17 +8,19 @@
     android:background="#F5F5F5"
     tools:context=".MainActivity">
 
-    <TextView
-        android:id="@+id/tvInstruction"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="打开微信并开始说话"
-        android:textSize="18sp"
-        android:textColor="#666666"
-        android:layout_marginBottom="32dp"
-        app:layout_constraintBottom_toTopOf="@+id/downloadContainer"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent" />
+    <!-- 设置图标 -->
+    <ImageButton
+        android:id="@+id/btnSettings"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_margin="16dp"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:src="@drawable/ic_settings"
+        android:contentDescription="@string/settings"
+        android:scaleType="centerInside"
+        android:padding="12dp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
 
     <!-- 下载进度容器 -->
     <LinearLayout
@@ -37,7 +39,7 @@
             android:id="@+id/tvDownloadStatus"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="检查模型状态..."
+            android:text="@string/download_status_checking"
             android:textSize="16sp"
             android:textColor="#333333"
             android:gravity="center"
@@ -60,7 +62,7 @@
             android:id="@+id/tvDownloadProgress"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="0 MB / 0 MB (0%)"
+            android:text="@string/download_progress_format"
             android:textSize="14sp"
             android:textColor="#666666"
             android:gravity="center"
@@ -72,7 +74,7 @@
             android:id="@+id/tvDownloadSpeed"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="下载速度: 0 KB/s | 剩余时间: --"
+            android:text="@string/download_speed_format"
             android:textSize="12sp"
             android:textColor="#999999"
             android:gravity="center"
@@ -92,7 +94,7 @@
                 android:id="@+id/btnRetryDownload"
                 android:layout_width="wrap_content"
                 android:layout_height="40dp"
-                android:text="重试下载"
+                android:text="@string/btn_retry_download"
                 android:textSize="14sp"
                 android:textColor="#FFFFFF"
                 android:background="@drawable/button_background"
@@ -107,7 +109,7 @@
         android:id="@+id/btnStartAssistant"
         android:layout_width="200dp"
         android:layout_height="60dp"
-        android:text="点击开启手机助手"
+        android:text="@string/btn_start_assistant"
         android:textSize="16sp"
         android:textColor="#FFFFFF"
         android:background="@drawable/button_background"

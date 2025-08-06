@@ -115,7 +115,11 @@ class TTSManager(private val context: Context) {
     }
     
     fun stop() {
-        textToSpeech?.stop()
+        if (isSpeaking()) {
+            textToSpeech?.stop()
+            // 手动触发完成回调，因为stop()不会自动触发onDone
+            ttsListener?.onTTSComplete()
+        }
     }
     
     fun isSpeaking(): Boolean {

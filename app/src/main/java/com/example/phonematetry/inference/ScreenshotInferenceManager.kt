@@ -17,9 +17,6 @@ private const val TAG = "ScreenshotInferenceManager"
 
 class ScreenshotInferenceManager(private val context: Context) {
     
-    // 固定的prompt
-    private val FIXED_PROMPT = "用户现在想要在手机里的微信APP中进行线上门诊预约，请根据你刚刚看到的截图，输出用户需要做的动作，比如点击某个按钮。请确保你的输出简洁。"
-    
     private val model: Model = GEMMA3N_E2B_MODEL
     private val ttsManager = TTSManager(context)
     private val coroutineScope = CoroutineScope(Dispatchers.Main)
@@ -27,6 +24,10 @@ class ScreenshotInferenceManager(private val context: Context) {
     private var isModelInitialized = false
     private var isInferenceInProgress = false
     private var currentInferenceJob: Job? = null
+    
+    // 存储当前的截图和ASR结果
+    private var currentScreenshot: Bitmap? = null
+    private var currentASRResult: String? = null
     
     interface ScreenshotInferenceListener {
         fun onModelInitialized()
@@ -37,6 +38,7 @@ class ScreenshotInferenceManager(private val context: Context) {
         fun onTTSStart()
         fun onTTSComplete()
         fun onTTSError(error: String)
+        fun onSessionResetComplete()
     }
     
     private var listener: ScreenshotInferenceListener? = null
@@ -75,29 +77,50 @@ class ScreenshotInferenceManager(private val context: Context) {
                             listener?.onModelInitialized()
                         } else {
                             Log.e(TAG, "Model initialization failed: $error")
-                            listener?.onInferenceError("模型初始化失败: $error")
+                            listener?.onInferenceError(getErrorMessage("model_init_failed") + ": $error")
                         }
                     }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Exception during model initialization", e)
                 withContext(Dispatchers.Main) {
-                    listener?.onInferenceError("模型初始化异常: ${e.message}")
+                    listener?.onInferenceError(getErrorMessage("model_init_exception") + ": ${e.message}")
                 }
             }
         }
     }
     
-    fun processScreenshot(screenshot: Bitmap) {
+    // 保存截图，等待ASR结果
+    fun saveScreenshot(screenshot: Bitmap) {
+        currentScreenshot = screenshot
+        Log.d(TAG, "Screenshot saved, waiting for ASR result")
+    }
+    
+    // 处理ASR结果并开始推理
+    fun processWithASRResult(asrResult: String) {
+        currentASRResult = asrResult
+        
+        // 确保TTS使用正确的语言
+        ttsManager.updateLanguage()
+        
+        val screenshot = currentScreenshot
+        if (screenshot == null) {
+            listener?.onInferenceError(getErrorMessage("no_screenshot"))
+            return
+        }
+        
         if (isInferenceInProgress) {
-            Log.w(TAG, "Inference already in progress, ignoring new screenshot")
+            Log.w(TAG, "Inference already in progress, ignoring new request")
             return
         }
         
         if (!isModelInitialized) {
-            listener?.onInferenceError("模型尚未初始化完成")
+            listener?.onInferenceError(getErrorMessage("model_not_initialized"))
             return
         }
+        
+        // 构造动态prompt
+        val dynamicPrompt = getDynamicPrompt(asrResult)
         
         currentInferenceJob = coroutineScope.launch(Dispatchers.IO) {
             try {
@@ -112,16 +135,20 @@ class ScreenshotInferenceManager(private val context: Context) {
                     delay(100)
                 }
                 
-                // 重置会话
-                LlmInferenceManager.resetSession(model)
-                delay(500)
+                // 安全地重置会话，确保每次都是新的对话
+                try {
+                    LlmInferenceManager.resetSession(model)
+                    delay(200) // 减少延迟时间
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to reset session before inference, continuing anyway", e)
+                }
                 
                 var fullResponse = ""
                 var lastTTSText = ""
                 
                 LlmInferenceManager.runInference(
                     model = model,
-                    prompt = FIXED_PROMPT,
+                    prompt = dynamicPrompt,
                     image = screenshot,
                     resultListener = { partialResult, done ->
                         fullResponse += partialResult
@@ -150,6 +177,10 @@ class ScreenshotInferenceManager(private val context: Context) {
                             }
                             
                             isInferenceInProgress = false
+                            
+                            // 清理当前的截图和ASR结果
+                            currentScreenshot = null
+                            currentASRResult = null
                         }
                     },
                     cleanUpListener = {
@@ -161,7 +192,7 @@ class ScreenshotInferenceManager(private val context: Context) {
                 Log.e(TAG, "Error during inference", e)
                 isInferenceInProgress = false
                 withContext(Dispatchers.Main) {
-                    listener?.onInferenceError("推理过程出错: ${e.message}")
+                    listener?.onInferenceError(getErrorMessage("inference_error") + ": ${e.message}")
                 }
             }
         }
@@ -175,11 +206,62 @@ class ScreenshotInferenceManager(private val context: Context) {
                (newTextLength > 0 && (fullText.endsWith("。") || fullText.endsWith("？") || fullText.endsWith("！")))
     }
     
+    private fun getCurrentLanguage(): String {
+        val sharedPreferences = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+        return sharedPreferences.getString("language", "zh") ?: "zh"
+    }
+    
+    private fun getDynamicPrompt(asrResult: String): String {
+        return when (getCurrentLanguage()) {
+            "en" -> "User question: ${asrResult}. Please answer the user's question concisely or provide screen operation guidance based on the user's screen state and question above. Your answer should be concise and accurate."
+            else -> "用户提问：${asrResult}。请根据以上给你的用户屏幕状态和用户提问，简洁地回答用户的问题或者提供屏幕操作指引。你的回答需要简洁、精确。"
+        }
+    }
+    
+    private fun getErrorMessage(errorType: String): String {
+        return when (getCurrentLanguage()) {
+            "en" -> when (errorType) {
+                "no_screenshot" -> "No screenshot available"
+                "model_not_initialized" -> "Model not initialized yet"
+                "model_init_failed" -> "Model initialization failed"
+                "model_init_exception" -> "Model initialization exception"
+                "inference_error" -> "Inference error"
+                else -> "Unknown error"
+            }
+            else -> when (errorType) {
+                "no_screenshot" -> "没有可用的截图"
+                "model_not_initialized" -> "模型尚未初始化完成"
+                "model_init_failed" -> "模型初始化失败"
+                "model_init_exception" -> "模型初始化异常"
+                "inference_error" -> "推理过程出错"
+                else -> "未知错误"
+            }
+        }
+    }
+    
+    fun updateLanguageSettings() {
+        // 更新TTS语言设置
+        ttsManager.updateLanguage()
+        Log.d(TAG, "Language settings updated")
+    }
+    
     fun stopInference() {
-        currentInferenceJob?.cancel()
-        LlmInferenceManager.stopInference(model)
-        ttsManager.stop()
+        Log.d(TAG, "Stopping inference...")
+        
+        // 立即设置标志位，停止推理
         isInferenceInProgress = false
+        
+        // 取消当前推理任务
+        currentInferenceJob?.cancel()
+        
+        // 停止TTS
+        ttsManager.stop()
+        
+        // 清理当前的截图和ASR结果
+        currentScreenshot = null
+        currentASRResult = null
+        
+        Log.d(TAG, "Inference stopped")
     }
     
     fun stopTTS() {

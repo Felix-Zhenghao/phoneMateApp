@@ -57,6 +57,9 @@ import android.content.ContentValues
 import android.Manifest
 import android.content.pm.PackageManager
 import com.example.phonematetry.inference.ScreenshotInferenceManager
+import com.example.phonematetry.asr.ASRManager
+import android.content.SharedPreferences
+import android.util.TypedValue
 
 class VoiceAssistantService : Service() {
 
@@ -66,6 +69,7 @@ class VoiceAssistantService : Service() {
     private lateinit var params: WindowManager.LayoutParams
     private lateinit var waveformView: WaveformView
     private lateinit var btnCapture: Button
+
     private lateinit var btnClose: Button
 
     private var audioRecord: AudioRecord? = null
@@ -83,6 +87,15 @@ class VoiceAssistantService : Service() {
     private val CAPTURE_COOLDOWN = 1000L // 1秒冷却时间
     private var isCapturing = false
     private lateinit var screenshotInferenceManager: ScreenshotInferenceManager
+    private lateinit var asrManager: ASRManager
+    
+    // 状态变量
+    private var isModelInitialized = false
+    private var isASRInitialized = false
+    private var hasScreenshot = false
+    private var isVoiceQueryInProgress = false
+    private var isASRProcessing = false
+    private var isWaitingForReset = false
 
     private val NOTIFICATION_ID = 1
     private val CHANNEL_ID = "voice_assistant_channel"
@@ -97,12 +110,17 @@ class VoiceAssistantService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        
+        // 应用语言设置
+        SettingsActivity.applyLanguage(this)
+        
         createNotificationChannel()
         
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         setupFloatingWindow()
         startAudioRecording()
         initializeScreenshotInference()
+        initializeASR()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -132,6 +150,9 @@ class VoiceAssistantService : Service() {
         stopContinuousScreenRecording()
         if (::screenshotInferenceManager.isInitialized) {
             screenshotInferenceManager.destroy()
+        }
+        if (::asrManager.isInitialized) {
+            asrManager.destroy()
         }
         mediaProjection?.stop()
         mediaProjection = null
@@ -183,7 +204,56 @@ class VoiceAssistantService : Service() {
         setupTouchListeners()
 
         btnCapture.setOnClickListener {
-            performScreenshotQuery()
+            // 检查是否正在TTS播放，如果是则停止播放并结束当前会话
+            if (screenshotInferenceManager.isTTSSpeaking()) {
+                screenshotInferenceManager.stopTTS()
+                // 重置状态，视作当前问答会话完全结束
+                isVoiceQueryInProgress = false
+                isASRProcessing = false
+                // 延迟更新按钮状态，确保TTS完全停止
+                handler.postDelayed({
+                    updateButtonStates()
+                }, 100)
+                return@setOnClickListener
+            }
+            
+            // 模型推理过程中不再支持打断
+            if (screenshotInferenceManager.isInferenceInProgress()) {
+                Toast.makeText(this@VoiceAssistantService, "模型正在分析中，请等待完成", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            
+            // 检查是否正在进行ASR处理，如果是则停止ASR并结束当前会话
+            if (isASRProcessing) {
+                // 立即设置等待重置状态
+                isWaitingForReset = true
+                isVoiceQueryInProgress = false
+                isASRProcessing = false
+                hasScreenshot = false
+                
+                // 立即更新UI显示"请稍后"
+                updateButtonStates()
+                
+                // 停止ASR处理
+                asrManager?.stopVoiceRecognition()
+                
+                // 延迟重置等待状态，因为ASR停止不需要模型重置
+                handler.postDelayed({
+                    isWaitingForReset = false
+                    updateButtonStates()
+                }, 1000)
+                
+                Toast.makeText(this@VoiceAssistantService, "已停止语音识别", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            
+            if (asrManager?.isRecording() == true) {
+                // 如果正在录音，停止录音
+                asrManager?.stopVoiceRecognition()
+            } else {
+                // 执行截图，截图完成后会自动开始录音
+                performScreenshot()
+            }
         }
 
         btnClose.setOnClickListener {
@@ -365,22 +435,21 @@ class VoiceAssistantService : Service() {
     private fun initializeScreenshotInference() {
         // 初始化时禁用按钮并显示加载状态
         btnCapture.isEnabled = false
-        btnCapture.text = "正在加载助手"
+        btnCapture.text = getString(R.string.floating_loading)
         
         screenshotInferenceManager = ScreenshotInferenceManager(this)
         screenshotInferenceManager.initialize(object : ScreenshotInferenceManager.ScreenshotInferenceListener {
             override fun onModelInitialized() {
                 handler.post {
-                    btnCapture.isEnabled = true
-                    btnCapture.text = "截图询问"
+                    isModelInitialized = true
+                    updateButtonStates()
                 }
             }
             
             override fun onInferenceStart() {
                 handler.post {
-                    Toast.makeText(this@VoiceAssistantService, "开始分析截图...", Toast.LENGTH_SHORT).show()
-                    btnCapture.isEnabled = false
-                    btnCapture.text = "分析中..."
+                    Toast.makeText(this@VoiceAssistantService, getString(R.string.toast_analysis_start), Toast.LENGTH_SHORT).show()
+                    updateButtonStates()
                 }
             }
             
@@ -391,40 +460,50 @@ class VoiceAssistantService : Service() {
             override fun onInferenceComplete(fullText: String) {
                 handler.post {
                     btnCapture.isEnabled = true
-                    btnCapture.text = "截图询问"
-                    Toast.makeText(this@VoiceAssistantService, "分析完成", Toast.LENGTH_SHORT).show()
+                    btnCapture.text = getString(R.string.floating_screenshot_ask)
+                    Toast.makeText(this@VoiceAssistantService, getString(R.string.toast_analysis_complete), Toast.LENGTH_SHORT).show()
                 }
             }
             
             override fun onInferenceError(error: String) {
                 handler.post {
                     btnCapture.isEnabled = true
-                    btnCapture.text = "截图询问"
-                    Toast.makeText(this@VoiceAssistantService, "分析失败: $error", Toast.LENGTH_LONG).show()
+                    btnCapture.text = getString(R.string.floating_screenshot_ask)
+                    Toast.makeText(this@VoiceAssistantService, getString(R.string.toast_analysis_error, error), Toast.LENGTH_LONG).show()
                 }
             }
             
             override fun onTTSStart() {
                 handler.post {
-                    Toast.makeText(this@VoiceAssistantService, "开始语音播放", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@VoiceAssistantService, getString(R.string.toast_tts_start), Toast.LENGTH_SHORT).show()
+                    updateButtonStates()
                 }
             }
             
             override fun onTTSComplete() {
                 handler.post {
-                    Toast.makeText(this@VoiceAssistantService, "语音播放完成", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@VoiceAssistantService, getString(R.string.toast_tts_complete), Toast.LENGTH_SHORT).show()
+                    updateButtonStates()
                 }
             }
             
             override fun onTTSError(error: String) {
                 handler.post {
-                    Toast.makeText(this@VoiceAssistantService, "语音播放失败: $error", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this@VoiceAssistantService, getString(R.string.toast_tts_error, error), Toast.LENGTH_LONG).show()
+                    updateButtonStates()
+                }
+            }
+            
+            override fun onSessionResetComplete() {
+                handler.post {
+                    isWaitingForReset = false
+                    updateButtonStates()
                 }
             }
         })
     }
     
-    private fun performScreenshotQuery() {
+    private fun performScreenshot() {
         val currentTime = System.currentTimeMillis()
         if (currentTime - lastCaptureTime < CAPTURE_COOLDOWN || isCapturing) {
             return
@@ -448,11 +527,11 @@ class VoiceAssistantService : Service() {
             startContinuousScreenRecording()
         }
         
-        // 获取当前帧并进行推理
-        captureAndAnalyzeFrame()
+        // 获取当前帧并保存截图
+        captureAndSaveScreenshot()
     }
     
-    private fun captureAndAnalyzeFrame() {
+    private fun captureAndSaveScreenshot() {
         // 临时隐藏浮窗以避免截进去
         floatingView.visibility = View.GONE
         
@@ -469,8 +548,20 @@ class VoiceAssistantService : Service() {
                 // 显示截图动画
                 showScreenshotAnimation()
                 
-                // 开始推理
-                screenshotInferenceManager.processScreenshot(bitmap)
+                // 保存截图到推理管理器
+                screenshotInferenceManager.saveScreenshot(bitmap)
+                
+                // 更新状态
+                hasScreenshot = true
+                updateButtonStates()
+                
+                // 截图完成后自动开始录音
+                if (isASRInitialized) {
+                    isVoiceQueryInProgress = true
+                    asrManager?.startVoiceRecognition()
+                } else {
+                    Toast.makeText(this, getString(R.string.toast_asr_not_ready), Toast.LENGTH_SHORT).show()
+                }
             } else {
                 // 如果获取图像失败，也要恢复浮窗显示
                 floatingView.visibility = View.VISIBLE
@@ -542,7 +633,7 @@ class VoiceAssistantService : Service() {
             }
         }
 
-        Toast.makeText(this, "截图已保存: $fileName", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, getString(R.string.toast_screenshot_saved, fileName), Toast.LENGTH_SHORT).show()
     }
 
     private fun saveImageToMediaStore(bitmap: Bitmap, fileName: String) {
@@ -570,4 +661,103 @@ class VoiceAssistantService : Service() {
         }
         animator.start()
     }
+    
+    private fun initializeASR() {
+        // 初始化ASR管理器
+        
+        asrManager = ASRManager(this, object : ASRManager.ASRListener {
+            override fun onASRResult(transcription: String) {
+                handler.post {
+                    isASRProcessing = false
+                    if (isVoiceQueryInProgress && hasScreenshot) {
+                        // 使用语音查询结果和截图进行推理
+                        screenshotInferenceManager.processWithASRResult(transcription)
+                        isVoiceQueryInProgress = false
+                        hasScreenshot = false // 重置截图状态，需要重新截图
+                    } else {
+                        Toast.makeText(this@VoiceAssistantService, getString(R.string.toast_asr_result, transcription), Toast.LENGTH_LONG).show()
+                    }
+                    updateButtonStates()
+                }
+            }
+            
+            override fun onASRError(error: String) {
+                handler.post {
+                    isASRProcessing = false
+                    Toast.makeText(this@VoiceAssistantService, getString(R.string.toast_asr_error, error), Toast.LENGTH_LONG).show()
+                    isVoiceQueryInProgress = false
+                    updateButtonStates()
+                }
+            }
+            
+            override fun onRecordingStarted() {
+                handler.post {
+                    updateButtonStates()
+                }
+            }
+            
+            override fun onRecordingFinished() {
+                handler.post {
+                    isASRProcessing = true
+                    updateButtonStates()
+                }
+            }
+            
+            override fun onSilenceDetected() {
+                // 不再使用静音检测自动停止录音
+            }
+            
+            override fun onSoundDetected() {
+                // 不再显示声音检测提示
+            }
+        })
+        
+        // 在后台线程初始化ASR
+        Thread {
+            val success = asrManager.initializeWithAssetFiles(false) // 使用英文模型
+            handler.post {
+                if (success) {
+                    isASRInitialized = true
+                    updateButtonStates()
+                    Toast.makeText(this@VoiceAssistantService, getString(R.string.toast_asr_init_success), Toast.LENGTH_SHORT).show()
+                } else {
+                    isASRInitialized = false
+                    updateButtonStates()
+                    Toast.makeText(this@VoiceAssistantService, getString(R.string.toast_asr_init_failed), Toast.LENGTH_LONG).show()
+                }
+            }
+        }.start()
+    }
+    
+    private fun updateButtonStates() {
+        // 检查是否正在进行推理
+        val isInferenceInProgress = screenshotInferenceManager.isInferenceInProgress()
+        // 检查是否正在进行TTS播放
+        val isTTSSpeaking = screenshotInferenceManager.isTTSSpeaking()
+        
+        // 更新截图按钮状态
+        btnCapture.isEnabled = isModelInitialized && isASRInitialized && !isCapturing && !isWaitingForReset
+        btnCapture.text = when {
+            !isModelInitialized || !isASRInitialized -> getString(R.string.floating_loading)
+            isWaitingForReset -> getString(R.string.floating_please_wait)
+            isTTSSpeaking -> getString(R.string.floating_output_interrupt)
+            isInferenceInProgress -> getString(R.string.floating_analyzing)
+            isASRProcessing -> getString(R.string.floating_analyzing_interrupt)
+            isCapturing -> getString(R.string.floating_capturing)
+            asrManager?.isRecording() == true -> getString(R.string.floating_recording_stop)
+            else -> getString(R.string.floating_screenshot_ask)
+        }
+        
+        // 根据按钮状态设置背景颜色
+        when (btnCapture.text) {
+            getString(R.string.floating_output_interrupt), getString(R.string.floating_analyzing_interrupt) -> {
+                btnCapture.setBackgroundResource(R.drawable.floating_button_light_green_background)
+            }
+            else -> {
+                btnCapture.setBackgroundResource(R.drawable.floating_button_background)
+            }
+        }
+    }
+    
+
 }

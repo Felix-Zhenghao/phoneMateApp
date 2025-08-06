@@ -18,17 +18,19 @@
         android:id="@+id/btnCapture"
         android:layout_width="120dp"
         android:layout_height="40dp"
-        android:text="截图询问"
-        android:textSize="16sp"
+        android:text="@string/floating_screenshot_ask"
+        android:textSize="14sp"
         android:textColor="#FFFFFF"
         android:background="@drawable/floating_button_background"
         android:layout_marginBottom="4dp" />
+
+
 
     <Button
         android:id="@+id/btnClose"
         android:layout_width="120dp"
         android:layout_height="40dp"
-        android:text="关闭"
+        android:text="@string/floating_close"
         android:textSize="16sp"
         android:textColor="#FFFFFF"
         android:background="@drawable/floating_close_button_background" />

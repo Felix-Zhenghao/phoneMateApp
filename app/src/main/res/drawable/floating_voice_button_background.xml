@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    
+    <!-- 禁用状态 - 更淡更透明的绿色 -->
+    <item android:state_enabled="false">
+        <shape android:shape="rectangle">
+            <solid android:color="#40C8A2" />
+            <corners android:radius="8dp" />
+        </shape>
+    </item>
+    
+    <!-- 启用状态 - 更深的绿色 -->
+    <item android:state_enabled="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#388E3C" />
+            <corners android:radius="8dp" />
+        </shape>
+    </item>
+    
+    <!-- 默认状态 - 更深的绿色 -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#388E3C" />
+            <corners android:radius="8dp" />
+        </shape>
+    </item>
+    
+</selector>

@@ -96,11 +96,19 @@ object LlmInferenceManager {
         try {
             Log.d(TAG, "Resetting session for model '${model.name}'")
 
-            val instance = model.instance as LlmModelInstance? ?: return
+            val instance = model.instance as LlmModelInstance?
+            if (instance == null) {
+                Log.w(TAG, "Model instance is null, cannot reset session")
+                return
+            }
+            
+            // 获取引擎实例
+            val inference = instance.engine
+            
             val session = instance.session
             session.close()
+            Log.d(TAG, "Old session closed")
 
-            val inference = instance.engine
             val newSession = LlmInferenceSession.createFromOptions(
                 inference,
                 LlmInferenceSession.LlmInferenceSessionOptions.builder()
@@ -118,6 +126,7 @@ object LlmInferenceManager {
             Log.d(TAG, "Session reset successfully")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to reset session", e)
+            throw e // 重新抛出异常，让调用者处理
         }
     }
 
@@ -191,13 +200,7 @@ object LlmInferenceManager {
     }
     
     fun stopInference(model: Model) {
-        try {
-            val instance = model.instance as LlmModelInstance?
-            // Note: cancelGenerateResponseAsync may not be available in this MediaPipe version
-            // For now, we'll rely on session cleanup in resetSession or cleanUp methods
-            Log.d(TAG, "Stop inference requested for model: ${model.name}")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to stop inference", e)
-        }
+        Log.d(TAG, "Stop inference called for model: ${model.name}")
+        // 模型推理过程中不再支持打断
     }
 }

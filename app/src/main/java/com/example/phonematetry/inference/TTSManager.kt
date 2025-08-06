@@ -25,15 +25,16 @@ class TTSManager(private val context: Context) {
         
         tts = TextToSpeech(context) { status ->
             if (status == TextToSpeech.SUCCESS) {
-                val result = tts?.setLanguage(Locale.CHINESE)
+                val locale = getCurrentLocale()
+                val result = tts?.setLanguage(locale)
                 if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-                    Log.e(TAG, "Chinese language is not supported")
+                    Log.e(TAG, "Language ${locale.language} is not supported")
                     isInitialized = false
                     onInitComplete?.invoke(false)
                 } else {
                     isInitialized = true
                     setupUtteranceListener()
-                    Log.d(TAG, "TTS initialized successfully")
+                    Log.d(TAG, "TTS initialized successfully with language: ${locale.language}")
                     onInitComplete?.invoke(true)
                 }
             } else {
@@ -58,7 +59,7 @@ class TTSManager(private val context: Context) {
             
             override fun onError(utteranceId: String?) {
                 Log.e(TAG, "TTS error for utterance: $utteranceId")
-                listener?.onTTSError("TTS播放出错")
+                listener?.onTTSError(getErrorMessage("tts_playback_error"))
             }
         })
     }
@@ -66,7 +67,7 @@ class TTSManager(private val context: Context) {
     fun speak(text: String, queueMode: Int = TextToSpeech.QUEUE_ADD): Boolean {
         if (!isInitialized || tts == null) {
             Log.e(TAG, "TTS not initialized")
-            listener?.onTTSError("TTS未初始化")
+            listener?.onTTSError(getErrorMessage("tts_not_initialized"))
             return false
         }
         
@@ -102,6 +103,45 @@ class TTSManager(private val context: Context) {
     
     fun setPitch(pitch: Float) {
         tts?.setPitch(pitch)
+    }
+    
+    private fun getCurrentLanguage(): String {
+        val sharedPreferences = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+        return sharedPreferences.getString("language", "zh") ?: "zh"
+    }
+    
+    private fun getCurrentLocale(): Locale {
+        return when (getCurrentLanguage()) {
+            "en" -> Locale.ENGLISH
+            else -> Locale.CHINESE
+        }
+    }
+    
+    private fun getErrorMessage(errorType: String): String {
+        return when (getCurrentLanguage()) {
+            "en" -> when (errorType) {
+                "tts_playback_error" -> "TTS playback error"
+                "tts_not_initialized" -> "TTS not initialized"
+                else -> "Unknown TTS error"
+            }
+            else -> when (errorType) {
+                "tts_playback_error" -> "TTS播放出错"
+                "tts_not_initialized" -> "TTS未初始化"
+                else -> "未知TTS错误"
+            }
+        }
+    }
+    
+    fun updateLanguage() {
+        if (isInitialized && tts != null) {
+            val locale = getCurrentLocale()
+            val result = tts?.setLanguage(locale)
+            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                Log.e(TAG, "Language ${locale.language} is not supported")
+            } else {
+                Log.d(TAG, "TTS language updated to: ${locale.language}")
+            }
+        }
     }
     
     fun destroy() {

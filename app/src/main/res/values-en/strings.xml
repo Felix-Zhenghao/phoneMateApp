@@ -1,0 +1,72 @@
+<resources>
+    <string name="app_name">Phone Assistant</string>
+    
+    <!-- Main Activity -->
+    <string name="btn_start_assistant">Click to Start Phone Assistant</string>
+    <string name="download_status_checking">Checking model status...</string>
+    <string name="download_status_ready">Model is ready, you can start the app</string>
+    <string name="download_progress_format">%1$s MB / %2$s MB (%3$d%%)</string>
+    <string name="download_speed_format">Speed: %1$s KB/s | Time left: %2$s</string>
+    <string name="btn_retry_download">Retry Download</string>
+    
+    <!-- Settings -->
+    <string name="settings">Settings</string>
+    <string name="back">Back</string>
+    <string name="language_setting">Language</string>
+
+    
+    <!-- Language Options -->
+    <string name="language_chinese">中文</string>
+    <string name="language_english">English</string>
+    
+    <!-- Floating Window -->
+    <string name="btn_capture">Screenshot &amp; Ask</string>
+    <string name="btn_close">Close</string>
+    <string name="analyzing">Analyzing</string>
+    <string name="please_wait">Please wait</string>
+    <string name="model_analyzing_wait">Model is analyzing, please wait for completion</string>
+    
+    <!-- Floating window related -->
+    <string name="floating_screenshot_ask">Screenshot Ask</string>
+    <string name="floating_close">Close</string>
+    <string name="floating_loading">Loading Assistant</string>
+    <string name="floating_please_wait">Please Wait</string>
+    <string name="floating_output_interrupt">Speaking, Tap to Stop</string>
+    <string name="floating_analyzing">Analyzing</string>
+    <string name="floating_analyzing_interrupt">Analyzing, Tap to Stop</string>
+    <string name="floating_capturing">Capturing…</string>
+    <string name="floating_recording_stop">Recording, Tap to Stop</string>
+    
+    <!-- Permissions -->
+    <string name="permission_audio_title">Audio Permission</string>
+    <string name="permission_audio_message">Audio permission is required to record voice</string>
+    <string name="permission_storage_title">Storage Permission</string>
+    <string name="permission_storage_message">Storage permission is required to download model files</string>
+    <string name="permission_overlay_title">Overlay Permission</string>
+    <string name="permission_overlay_message">Overlay permission is required to display voice assistant</string>
+    <string name="permission_granted">Permission granted</string>
+    <string name="permission_denied">Permission denied</string>
+    <string name="go_to_settings">Go to Settings</string>
+    <string name="cancel">Cancel</string>
+    <string name="confirm">Confirm</string>
+    <string name="dialog_close_title">Confirm Close</string>
+    <string name="dialog_close_message">Are you sure you want to close the AI assistant?</string>
+    
+    <!-- Permission related -->
+    <string name="permission_overlay">Overlay Permission</string>
+    <string name="permission_microphone">Microphone Permission</string>
+    
+    <!-- Toast messages -->
+    <string name="toast_analysis_start">Starting screenshot analysis…</string>
+    <string name="toast_analysis_complete">Analysis complete</string>
+    <string name="toast_analysis_error">Analysis failed: %1$s</string>
+    <string name="toast_tts_start">Starting voice playback</string>
+    <string name="toast_tts_complete">Voice playback complete</string>
+    <string name="toast_tts_error">Voice playback failed: %1$s</string>
+    <string name="toast_asr_not_ready">Voice recognition not initialized</string>
+    <string name="toast_screenshot_saved">Screenshot saved: %1$s</string>
+    <string name="toast_asr_init_success">Voice recognition initialized successfully</string>
+    <string name="toast_asr_init_failed">Voice recognition initialization failed</string>
+    <string name="toast_asr_result">Recognition result: %1$s</string>
+    <string name="toast_asr_error">Voice recognition failed: %1$s</string>
+</resources>

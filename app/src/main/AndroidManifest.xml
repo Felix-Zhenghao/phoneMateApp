@@ -45,6 +45,11 @@
             </intent-filter>
         </activity>
         
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity" />
+        
         <!-- 语音助手服务 -->
         <service
             android:name=".VoiceAssistantService"

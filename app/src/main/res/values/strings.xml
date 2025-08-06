@@ -1,3 +1,66 @@
 <resources>
     <string name="app_name">手机助手</string>
+    
+    <!-- 主界面 -->
+    <string name="btn_start_assistant">点击开启手机助手</string>
+    <string name="download_status_checking">检查模型状态...</string>
+    <string name="download_status_ready">模型已准备就绪，可以启动APP</string>
+    <string name="download_progress_format">%1$s MB / %2$s MB (%3$d%%)</string>
+    <string name="download_speed_format">下载速度: %1$s KB/s | 剩余时间: %2$s</string>
+    <string name="btn_retry_download">重试下载</string>
+    
+    <!-- 设置页面 -->
+    <string name="settings">设置</string>
+    <string name="back">返回</string>
+    <string name="language_setting">语言设置</string>
+
+    
+    <!-- 语言选项 -->
+    <string name="language_chinese">中文</string>
+    <string name="language_english">English</string>
+    
+    <!-- 浮窗 -->
+    <string name="btn_capture">截图询问</string>
+    <string name="btn_close">关闭</string>
+    <string name="floating_screenshot_ask">截图询问</string>
+    <string name="floating_close">关闭</string>
+    <string name="floating_loading">正在加载助手</string>
+    <string name="floating_please_wait">请稍后</string>
+    <string name="floating_output_interrupt">输出中，点击打断</string>
+    <string name="floating_analyzing">分析中</string>
+    <string name="floating_analyzing_interrupt">分析中，点击打断</string>
+    <string name="floating_capturing">截图中…</string>
+    <string name="floating_recording_stop">录音中，点击停止</string>
+    <string name="analyzing">分析中</string>
+    <string name="please_wait">请等待</string>
+    <string name="model_analyzing_wait">模型正在分析中，请等待完成</string>
+    
+    <!-- 权限相关 -->
+    <string name="permission_audio_title">录音权限</string>
+    <string name="permission_audio_message">需要录音权限来录制语音</string>
+    <string name="permission_storage_title">存储权限</string>
+    <string name="permission_storage_message">需要存储权限来下载模型文件</string>
+    <string name="permission_overlay_title">悬浮窗权限</string>
+    <string name="permission_overlay_message">需要悬浮窗权限来显示语音助手</string>
+    <string name="permission_granted">权限已授予</string>
+    <string name="permission_denied">权限被拒绝</string>
+    <string name="go_to_settings">前往设置</string>
+    <string name="cancel">取消</string>
+    <string name="confirm">确认</string>
+    <string name="dialog_close_title">确认关闭</string>
+    <string name="dialog_close_message">确认要关闭AI助手吗？</string>
+    
+    <!-- Toast消息 -->
+    <string name="toast_analysis_start">开始分析截图…</string>
+    <string name="toast_analysis_complete">分析完成</string>
+    <string name="toast_analysis_error">分析失败: %1$s</string>
+    <string name="toast_tts_start">开始语音播放</string>
+    <string name="toast_tts_complete">语音播放完成</string>
+    <string name="toast_tts_error">语音播放失败: %1$s</string>
+    <string name="toast_asr_not_ready">语音识别未初始化完成</string>
+    <string name="toast_screenshot_saved">截图已保存: %1$s</string>
+    <string name="toast_asr_init_success">语音识别初始化成功</string>
+    <string name="toast_asr_init_failed">语音识别初始化失败</string>
+    <string name="toast_asr_result">识别结果: %1$s</string>
+    <string name="toast_asr_error">语音识别失败: %1$s</string>
 </resources>

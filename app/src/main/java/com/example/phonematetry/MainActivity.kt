@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Button
+import android.widget.ImageButton
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
@@ -23,6 +24,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.Observer
 import com.example.phonematetry.data.ModelDownloadStatusType
 import com.example.phonematetry.ModelDownloadManager
+import com.example.phonematetry.asr.ASRTest
 
 class MainActivity : AppCompatActivity() {
 
@@ -36,6 +38,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvDownloadProgress: TextView
     private lateinit var tvDownloadSpeed: TextView
     private lateinit var btnRetryDownload: Button
+    private lateinit var btnSettings: ImageButton
 
     private lateinit var mediaProjectionManager: MediaProjectionManager
     private var mediaProjectionIntent: Intent? = null
@@ -43,6 +46,10 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // 应用语言设置
+        SettingsActivity.applyLanguage(this)
+        
         enableEdgeToEdge()
         setContentView(R.layout.activity_main)
 
@@ -67,6 +74,9 @@ class MainActivity : AppCompatActivity() {
         } else {
             checkPermissions()
         }
+        
+        // 测试ASR功能
+        testASRFunctionality()
     }
 
     private fun initViews() {
@@ -76,9 +86,14 @@ class MainActivity : AppCompatActivity() {
         tvDownloadProgress = findViewById(R.id.tvDownloadProgress)
         tvDownloadSpeed = findViewById(R.id.tvDownloadSpeed)
         btnRetryDownload = findViewById(R.id.btnRetryDownload)
+        btnSettings = findViewById(R.id.btnSettings)
         
         btnStartAssistant.setOnClickListener { startVoiceAssistant() }
         btnRetryDownload.setOnClickListener { modelDownloadManager.retryDownload() }
+        btnSettings.setOnClickListener { 
+            val intent = Intent(this, SettingsActivity::class.java)
+            startActivity(intent)
+        }
         
         // 初始状态下禁用启动按钮
         btnStartAssistant.isEnabled = false
@@ -94,7 +109,7 @@ class MainActivity : AppCompatActivity() {
         modelDownloadManager.isModelReady.observe(this, Observer { isReady ->
             btnStartAssistant.isEnabled = isReady
             if (isReady) {
-                tvDownloadStatus.text = "模型已准备就绪，可以启动APP"
+                tvDownloadStatus.text = getString(R.string.download_status_ready)
                 progressBar.visibility = android.view.View.GONE
                 tvDownloadProgress.visibility = android.view.View.GONE
                 tvDownloadSpeed.visibility = android.view.View.GONE
@@ -155,6 +170,23 @@ class MainActivity : AppCompatActivity() {
                 // Handle other states if needed
             }
         }
+    }
+
+    private fun testASRFunctionality() {
+        // 在后台线程中测试ASR功能
+        Thread {
+            try {
+                val asrTest = ASRTest(this)
+                asrTest.runAllTests()
+                runOnUiThread {
+                    Toast.makeText(this, "ASR测试完成，请查看日志", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    Toast.makeText(this, "ASR测试失败: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }.start()
     }
 
     private fun checkPermissions() {
