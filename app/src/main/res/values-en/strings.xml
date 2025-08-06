@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Phone Assistant</string>
+    <string name="app_name">PhoneMate</string>
     
     <!-- Main Activity -->
     <string name="btn_start_assistant">Click to Start Phone Assistant</string>

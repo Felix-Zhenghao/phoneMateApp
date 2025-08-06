@@ -29,6 +29,9 @@ class ScreenshotInferenceManager(private val context: Context) {
     private var currentScreenshot: Bitmap? = null
     private var currentASRResult: String? = null
     
+    // 存储历史ASR输入记录
+    private val asrHistory = mutableListOf<String>()
+    
     interface ScreenshotInferenceListener {
         fun onModelInitialized()
         fun onInferenceStart()
@@ -100,6 +103,9 @@ class ScreenshotInferenceManager(private val context: Context) {
     fun processWithASRResult(asrResult: String) {
         currentASRResult = asrResult
         
+        // 将当前ASR结果添加到历史记录中
+        asrHistory.add(asrResult)
+        
         // 确保TTS使用正确的语言
         ttsManager.updateLanguage()
         
@@ -119,8 +125,8 @@ class ScreenshotInferenceManager(private val context: Context) {
             return
         }
         
-        // 构造动态prompt
-        val dynamicPrompt = getDynamicPrompt(asrResult)
+        // 构造动态prompt，包含历史对话
+        val dynamicPrompt = getDynamicPrompt(asrHistory)
         
         currentInferenceJob = coroutineScope.launch(Dispatchers.IO) {
             try {
@@ -178,7 +184,7 @@ class ScreenshotInferenceManager(private val context: Context) {
                             
                             isInferenceInProgress = false
                             
-                            // 清理当前的截图和ASR结果
+                            // 清理当前的截图，但保留ASR历史记录
                             currentScreenshot = null
                             currentASRResult = null
                         }
@@ -208,13 +214,30 @@ class ScreenshotInferenceManager(private val context: Context) {
     
     private fun getCurrentLanguage(): String {
         val sharedPreferences = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-        return sharedPreferences.getString("language", "zh") ?: "zh"
+        return sharedPreferences.getString("language", "en") ?: "en"
     }
     
-    private fun getDynamicPrompt(asrResult: String): String {
+    private fun getDynamicPrompt(asrHistory: List<String>): String {
+        if (asrHistory.isEmpty()) {
+            return when (getCurrentLanguage()) {
+                "en" -> "Please analyze the current screen state and provide guidance."
+                else -> "请分析当前屏幕状态并提供指引。"
+            }
+        }
+        
         return when (getCurrentLanguage()) {
-            "en" -> "User question: ${asrResult}. Please answer the user's question concisely or provide screen operation guidance based on the user's screen state and question above. Your answer should be concise and accurate."
-            else -> "用户提问：${asrResult}。请根据以上给你的用户屏幕状态和用户提问，简洁地回答用户的问题或者提供屏幕操作指引。你的回答需要简洁、精确。"
+            "en" -> {
+                val historyText = asrHistory.mapIndexed { index, input ->
+                    "User input round ${index + 1}: $input"
+                }.joinToString("; ")
+                "$historyText. Based on the user's past and current multi-round inputs, comprehensively determine what the user **currently** wants to do, and provide concise answers to the user's questions or screen operation guidance based on the current screen state. You should only output your answer or guidance. If you want the user to click a certain button on the screen, describe the location, shape or the color of the button concisely to help the user to distinguish that button from other buttons on the screen. You should always answer in a concise and accurate manner."
+            }
+            else -> {
+                val historyText = asrHistory.mapIndexed { index, input ->
+                    "用户第${index + 1}轮输入：$input"
+                }.joinToString("；")
+                "$historyText。请根据用户过去和现在的多轮输入的内容，综合判断用户**现在**想要做什么，根据当下的屏幕状态简洁地回答用户的问题或者提供屏幕操作指引。你应该只输出你的回答或者指引。如果用户想点击屏幕上的某个按钮，简洁地描述按钮的位置、形状或颜色，以帮助用户区分该按钮与屏幕上的其他按钮。你应该总是以简洁、精确的方式回答。"
+            }
         }
     }
     
@@ -245,6 +268,15 @@ class ScreenshotInferenceManager(private val context: Context) {
         Log.d(TAG, "Language settings updated")
     }
     
+    fun clearConversationHistory() {
+        asrHistory.clear()
+        Log.d(TAG, "Conversation history cleared")
+    }
+    
+    fun getConversationHistorySize(): Int {
+        return asrHistory.size
+    }
+    
     fun stopInference() {
         Log.d(TAG, "Stopping inference...")
         
@@ -257,7 +289,7 @@ class ScreenshotInferenceManager(private val context: Context) {
         // 停止TTS
         ttsManager.stop()
         
-        // 清理当前的截图和ASR结果
+        // 清理当前的截图和ASR结果，但保留历史记录
         currentScreenshot = null
         currentASRResult = null
         

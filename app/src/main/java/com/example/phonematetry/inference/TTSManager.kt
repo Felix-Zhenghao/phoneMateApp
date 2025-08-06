@@ -107,7 +107,7 @@ class TTSManager(private val context: Context) {
     
     private fun getCurrentLanguage(): String {
         val sharedPreferences = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-        return sharedPreferences.getString("language", "zh") ?: "zh"
+        return sharedPreferences.getString("language", "en") ?: "en"
     }
     
     private fun getCurrentLocale(): Locale {

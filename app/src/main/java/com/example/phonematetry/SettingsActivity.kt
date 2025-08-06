@@ -25,7 +25,7 @@ class SettingsActivity : AppCompatActivity() {
         
         fun applyLanguage(context: Context) {
             val sharedPreferences = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-            val language = sharedPreferences.getString(PREF_LANGUAGE, LANGUAGE_CHINESE) ?: LANGUAGE_CHINESE
+            val language = sharedPreferences.getString(PREF_LANGUAGE, LANGUAGE_ENGLISH) ?: LANGUAGE_ENGLISH
             
             val locale = Locale(language)
             Locale.setDefault(locale)
@@ -80,13 +80,13 @@ class SettingsActivity : AppCompatActivity() {
     
     private fun loadSettings() {
         // 加载语言设置
-        val currentLanguage = sharedPreferences.getString(PREF_LANGUAGE, LANGUAGE_CHINESE) ?: LANGUAGE_CHINESE
+        val currentLanguage = sharedPreferences.getString(PREF_LANGUAGE, LANGUAGE_ENGLISH) ?: LANGUAGE_ENGLISH
         val languagePosition = if (currentLanguage == LANGUAGE_CHINESE) 0 else 1
         spinnerLanguage.setSelection(languagePosition)
     }
     
     private fun saveLanguageSetting(language: String) {
-        val currentLanguage = sharedPreferences.getString(PREF_LANGUAGE, LANGUAGE_CHINESE)
+        val currentLanguage = sharedPreferences.getString(PREF_LANGUAGE, LANGUAGE_ENGLISH)
         if (currentLanguage != language) {
             sharedPreferences.edit().putString(PREF_LANGUAGE, language).apply()
             

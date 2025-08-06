@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">手机助手</string>
+    <string name="app_name">PhoneMate</string>
     
     <!-- 主界面 -->
     <string name="btn_start_assistant">点击开启手机助手</string>
