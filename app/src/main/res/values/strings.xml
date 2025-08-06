@@ -4,10 +4,21 @@
     <!-- 主界面 -->
     <string name="btn_start_assistant">点击开启手机助手</string>
     <string name="download_status_checking">检查模型状态...</string>
+    <string name="download_status_downloading">正在下载模型...</string>
+    <string name="download_status_unzipping">正在解压模型...</string>
+    <string name="download_status_completed">模型下载完成！</string>
+    <string name="download_status_failed">模型下载失败: %1$s</string>
     <string name="download_status_ready">模型已准备就绪，可以启动APP</string>
     <string name="download_progress_format">%1$s MB / %2$s MB (%3$d%%)</string>
     <string name="download_speed_format">下载速度: %1$s KB/s | 剩余时间: %2$s</string>
     <string name="btn_retry_download">重试下载</string>
+    <string name="notification_downloading_model">正在下载模型</string>
+    <string name="notification_downloading_model_named">正在下载 \"%1$s\"</string>
+    <string name="notification_download_progress">下载进度: %1$d%%</string>
+    <string name="time_calculating">计算中...</string>
+    <string name="time_format_hours_minutes">%1$d小时%2$d分钟</string>
+    <string name="time_format_minutes_seconds">%1$d分钟%2$d秒</string>
+    <string name="time_format_seconds">%1$d秒</string>
     
     <!-- 设置页面 -->
     <string name="settings">设置</string>
@@ -44,6 +55,28 @@
     <string name="permission_overlay_message">需要悬浮窗权限来显示语音助手</string>
     <string name="permission_granted">权限已授予</string>
     <string name="permission_denied">权限被拒绝</string>
+    <string name="permission_reacquiring_screenshot">正在重新获取截图权限...</string>
+    <string name="permission_need_audio_for_assistant">需要录音权限才能启动语音助手</string>
+    <string name="permission_need_storage_for_screenshot">需要存储权限才能使用截图功能</string>
+    <string name="permission_need_overlay_for_assistant">需要悬浮窗权限才能显示助手界面</string>
+    <string name="permission_screenshot_updated">截图权限已更新</string>
+    <string name="permission_status_complete">权限设置完成:\n</string>
+    <string name="permission_audio_granted">🎤 录音权限: ✅ 已授予\n</string>
+    <string name="permission_audio_denied">🎤 录音权限: ❌ 被拒绝\n</string>
+    <string name="permission_storage_granted">💾 存储权限: ✅ 已授予\n</string>
+    <string name="permission_storage_denied">💾 存储权限: ❌ 被拒绝\n</string>
+    <string name="permission_overlay_granted">🔲 悬浮窗权限: ✅ 已授予\n\n</string>
+    <string name="permission_overlay_denied">🔲 悬浮窗权限: ❌ 被拒绝\n\n</string>
+    <string name="permission_all_granted">🎉 所有权限已授予，可以正常使用所有功能！</string>
+    <string name="permission_some_denied">⚠️ 部分权限被拒绝，相关功能将受限。您可以稍后在设置中手动开启。</string>
+    <string name="permission_audio_granted_toast">录音权限已授予</string>
+    <string name="permission_audio_denied_toast">录音权限被拒绝，无法使用语音功能</string>
+    <string name="permission_storage_granted_toast">存储权限已授予，现在可以使用截图功能</string>
+    <string name="permission_storage_denied_toast">存储权限被拒绝，无法保存截图</string>
+    <string name="permission_overlay_granted_toast">悬浮窗权限已授予</string>
+    <string name="permission_overlay_denied_toast">悬浮窗权限被拒绝，无法显示助手界面</string>
+    <string name="permission_screen_record_granted">屏幕录制权限已授予</string>
+    <string name="permission_screen_record_denied">屏幕录制权限被拒绝，截图功能将无法使用</string>
     <string name="go_to_settings">前往设置</string>
     <string name="cancel">取消</string>
     <string name="confirm">确认</string>

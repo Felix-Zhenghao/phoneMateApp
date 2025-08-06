@@ -16,7 +16,10 @@ class ModelDownloadManager(private val context: Context) {
     val isModelReady = MutableLiveData<Boolean>(false)
     
     init {
-        checkModelStatus()
+        // 初始化时只设置默认状态，不自动开始检查和下载
+        // 下载将在权限完全授予后通过 checkAndDownloadModel() 手动触发
+        downloadStatus.value = ModelDownloadStatus(status = ModelDownloadStatusType.NOT_DOWNLOADED)
+        isModelReady.value = false
     }
     
     /**
@@ -166,16 +169,16 @@ class ModelDownloadManager(private val context: Context) {
      * 格式化剩余时间
      */
     fun formatRemainingTime(remainingMs: Long): String {
-        if (remainingMs <= 0) return "计算中..."
+        if (remainingMs <= 0) return context.getString(R.string.time_calculating)
         
         val seconds = remainingMs / 1000
         val minutes = seconds / 60
         val hours = minutes / 60
         
         return when {
-            hours > 0 -> String.format("%d小时%d分钟", hours, minutes % 60)
-            minutes > 0 -> String.format("%d分钟%d秒", minutes, seconds % 60)
-            else -> String.format("%d秒", seconds)
+            hours > 0 -> context.getString(R.string.time_format_hours_minutes, hours, minutes % 60)
+            minutes > 0 -> context.getString(R.string.time_format_minutes_seconds, minutes, seconds % 60)
+            else -> context.getString(R.string.time_format_seconds, seconds)
         }
     }
 }

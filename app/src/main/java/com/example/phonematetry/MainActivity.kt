@@ -69,7 +69,7 @@ class MainActivity : AppCompatActivity() {
 
         // 检查是否是从Service请求重新获取MediaProjection权限
         if (intent.getBooleanExtra("requestMediaProjection", false)) {
-            Toast.makeText(this, "正在重新获取截图权限...", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.permission_reacquiring_screenshot), Toast.LENGTH_SHORT).show()
             requestMediaProjectionPermission()
         } else {
             checkPermissions()
@@ -121,7 +121,7 @@ class MainActivity : AppCompatActivity() {
     private fun updateDownloadUI(status: com.example.phonematetry.data.ModelDownloadStatus) {
         when (status.status) {
             ModelDownloadStatusType.NOT_DOWNLOADED -> {
-                tvDownloadStatus.text = "准备下载模型..."
+                tvDownloadStatus.text = "Preparing to download the model..."
                 progressBar.visibility = android.view.View.VISIBLE
                 progressBar.progress = 0
                 tvDownloadProgress.visibility = android.view.View.GONE
@@ -130,7 +130,7 @@ class MainActivity : AppCompatActivity() {
             }
             ModelDownloadStatusType.IN_PROGRESS -> {
                 val progress = modelDownloadManager.getDownloadProgress()
-                tvDownloadStatus.text = "正在下载模型..."
+                tvDownloadStatus.text = getString(R.string.download_status_downloading)
                 progressBar.visibility = android.view.View.VISIBLE
                 progressBar.progress = progress
                 
@@ -138,14 +138,14 @@ class MainActivity : AppCompatActivity() {
                 tvDownloadProgress.text = progressText
                 tvDownloadProgress.visibility = android.view.View.VISIBLE
                 
-                val speedText = "下载速度: ${modelDownloadManager.formatDownloadSpeed(status.bytesPerSecond)}"
-                val remainingText = "剩余时间: ${modelDownloadManager.formatRemainingTime(status.remainingMs)}"
-                tvDownloadSpeed.text = "$speedText | $remainingText"
+                val speedText = modelDownloadManager.formatDownloadSpeed(status.bytesPerSecond)
+                val remainingText = modelDownloadManager.formatRemainingTime(status.remainingMs)
+                tvDownloadSpeed.text = getString(R.string.download_speed_format, speedText, remainingText)
                 tvDownloadSpeed.visibility = android.view.View.VISIBLE
                 btnRetryDownload.visibility = android.view.View.GONE
             }
             ModelDownloadStatusType.UNZIPPING -> {
-                tvDownloadStatus.text = "正在解压模型..."
+                tvDownloadStatus.text = getString(R.string.download_status_unzipping)
                 progressBar.visibility = android.view.View.VISIBLE
                 progressBar.isIndeterminate = true
                 tvDownloadProgress.visibility = android.view.View.GONE
@@ -153,14 +153,14 @@ class MainActivity : AppCompatActivity() {
                 btnRetryDownload.visibility = android.view.View.GONE
             }
             ModelDownloadStatusType.SUCCEEDED -> {
-                tvDownloadStatus.text = "模型下载完成！"
+                tvDownloadStatus.text = getString(R.string.download_status_completed)
                 progressBar.visibility = android.view.View.GONE
                 tvDownloadProgress.visibility = android.view.View.GONE
                 tvDownloadSpeed.visibility = android.view.View.GONE
                 btnRetryDownload.visibility = android.view.View.GONE
             }
             ModelDownloadStatusType.FAILED -> {
-                tvDownloadStatus.text = "模型下载失败: ${status.errorMessage}"
+                tvDownloadStatus.text = getString(R.string.download_status_failed, status.errorMessage)
                 progressBar.visibility = android.view.View.GONE
                 tvDownloadProgress.visibility = android.view.View.GONE
                 tvDownloadSpeed.visibility = android.view.View.GONE
@@ -179,11 +179,11 @@ class MainActivity : AppCompatActivity() {
                 val asrTest = ASRTest(this)
                 asrTest.runAllTests()
                 runOnUiThread {
-                    Toast.makeText(this, "ASR测试完成，请查看日志", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "ASR Ready", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
                 runOnUiThread {
-                    Toast.makeText(this, "ASR测试失败: ${e.message}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this, "ASR Failed: ${e.message}", Toast.LENGTH_LONG).show()
                 }
             }
         }.start()
@@ -234,8 +234,32 @@ class MainActivity : AppCompatActivity() {
                 return
             }
         }
-        // 权限检查完成，开始模型下载检查
-        modelDownloadManager.checkAndDownloadModel()
+        // 权限检查完成，检查所有权限是否都已授予，然后开始模型下载
+        checkAllPermissionsAndStartDownload()
+    }
+
+    private fun checkAllPermissionsAndStartDownload() {
+        // 检查录音权限
+        val hasRecordAudio = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        
+        // 检查存储权限
+        val hasStorage: Boolean
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            hasStorage = ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED
+        } else {
+            hasStorage = ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+        }
+        
+        // 检查悬浮窗权限
+        var hasOverlay = true
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            hasOverlay = Settings.canDrawOverlays(this)
+        }
+        
+        // 只有在所有权限都授予的情况下才开始模型下载
+        if (hasRecordAudio && hasStorage && hasOverlay) {
+            modelDownloadManager.checkAndDownloadModel()
+        }
     }
 
     private fun startVoiceAssistant() {
@@ -247,7 +271,7 @@ class MainActivity : AppCompatActivity() {
 
         // 检查权限
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            Toast.makeText(this, "需要录音权限才能启动语音助手", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.permission_need_audio_for_assistant), Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -260,12 +284,12 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (!hasStoragePermission) {
-            Toast.makeText(this, "需要存储权限才能使用截图功能", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.permission_need_storage_for_screenshot), Toast.LENGTH_SHORT).show()
             return
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
-            Toast.makeText(this, "需要悬浮窗权限才能显示助手界面", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.permission_need_overlay_for_assistant), Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -301,7 +325,7 @@ class MainActivity : AppCompatActivity() {
         }
         startForegroundService(serviceIntent)
 
-        Toast.makeText(this, "截图权限已更新", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, getString(R.string.permission_screenshot_updated), Toast.LENGTH_SHORT).show()
     }
 
     private fun isServiceRunning(serviceClass: Class<*>): Boolean {
@@ -329,15 +353,15 @@ class MainActivity : AppCompatActivity() {
             hasOverlay = Settings.canDrawOverlays(this)
         }
 
-        val message = StringBuilder("权限设置完成:\n")
-        message.append("🎤 录音权限: ").append(if (hasRecordAudio) "✅ 已授予" else "❌ 被拒绝").append("\n")
-        message.append("💾 存储权限: ").append(if (hasStorage) "✅ 已授予" else "❌ 被拒绝").append("\n")
-        message.append("🔲 悬浮窗权限: ").append(if (hasOverlay) "✅ 已授予" else "❌ 被拒绝").append("\n\n")
+        val message = StringBuilder(getString(R.string.permission_status_complete))
+        message.append(if (hasRecordAudio) getString(R.string.permission_audio_granted) else getString(R.string.permission_audio_denied))
+        message.append(if (hasStorage) getString(R.string.permission_storage_granted) else getString(R.string.permission_storage_denied))
+        message.append(if (hasOverlay) getString(R.string.permission_overlay_granted) else getString(R.string.permission_overlay_denied))
 
         if (hasRecordAudio && hasStorage && hasOverlay) {
-            message.append("🎉 所有权限已授予，可以正常使用所有功能！")
+            message.append(getString(R.string.permission_all_granted))
         } else {
-            message.append("⚠️ 部分权限被拒绝，相关功能将受限。您可以稍后在设置中手动开启。")
+            message.append(getString(R.string.permission_some_denied))
         }
 
         Toast.makeText(this, message.toString(), Toast.LENGTH_LONG).show()
@@ -348,19 +372,19 @@ class MainActivity : AppCompatActivity() {
 
         if (requestCode == PERMISSION_REQUEST_CODE) {
             if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                Toast.makeText(this, "录音权限已授予", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.permission_audio_granted_toast), Toast.LENGTH_SHORT).show()
                 // 继续检查存储权限
                 checkStoragePermission()
             } else {
-                Toast.makeText(this, "录音权限被拒绝，无法使用语音功能", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.permission_audio_denied_toast), Toast.LENGTH_SHORT).show()
                 // 即使录音权限被拒绝，也继续检查其他权限
                 checkStoragePermission()
             }
         } else if (requestCode == STORAGE_PERMISSION_REQUEST_CODE) {
             if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                Toast.makeText(this, "存储权限已授予，现在可以使用截图功能", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.permission_storage_granted_toast), Toast.LENGTH_SHORT).show()
             } else {
-                Toast.makeText(this, "存储权限被拒绝，无法保存截图", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.permission_storage_denied_toast), Toast.LENGTH_SHORT).show()
             }
             // 继续检查悬浮窗权限
             checkOverlayPermissionAndStartDownload()
@@ -373,18 +397,18 @@ class MainActivity : AppCompatActivity() {
         if (requestCode == OVERLAY_PERMISSION_REQUEST_CODE) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 if (Settings.canDrawOverlays(this)) {
-                    Toast.makeText(this, "悬浮窗权限已授予", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, getString(R.string.permission_overlay_granted_toast), Toast.LENGTH_SHORT).show()
                 } else {
-                    Toast.makeText(this, "悬浮窗权限被拒绝，无法显示助手界面", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, getString(R.string.permission_overlay_denied_toast), Toast.LENGTH_SHORT).show()
                 }
             }
-            // 权限检查完成，显示最终状态并开始模型下载检查
+            // 权限检查完成，显示最终状态并检查所有权限后开始模型下载
             showPermissionStatus()
-            modelDownloadManager.checkAndDownloadModel()
+            checkAllPermissionsAndStartDownload()
         } else if (requestCode == MEDIA_PROJECTION_REQUEST_CODE) {
             if (resultCode == RESULT_OK) {
                 mediaProjectionIntent = data
-                Toast.makeText(this, "屏幕录制权限已授予", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.permission_screen_record_granted), Toast.LENGTH_SHORT).show()
 
                 // 检查是否是重新获取权限的请求
                 if (intent.getBooleanExtra("requestMediaProjection", false)) {
@@ -397,7 +421,7 @@ class MainActivity : AppCompatActivity() {
                     startVoiceAssistantService()
                 }
             } else {
-                Toast.makeText(this, "屏幕录制权限被拒绝，截图功能将无法使用", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.permission_screen_record_denied), Toast.LENGTH_SHORT).show()
 
                 if (intent.getBooleanExtra("requestMediaProjection", false)) {
                     // 重新获取权限被拒绝，关闭Activity

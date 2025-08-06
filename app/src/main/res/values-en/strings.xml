@@ -4,10 +4,21 @@
     <!-- Main Activity -->
     <string name="btn_start_assistant">Click to Start Phone Assistant</string>
     <string name="download_status_checking">Checking model status...</string>
+    <string name="download_status_downloading">Downloading model...</string>
+    <string name="download_status_unzipping">Extracting model...</string>
+    <string name="download_status_completed">Model download completed!</string>
+    <string name="download_status_failed">Model download failed: %1$s</string>
     <string name="download_status_ready">Model is ready, you can start the app</string>
     <string name="download_progress_format">%1$s MB / %2$s MB (%3$d%%)</string>
     <string name="download_speed_format">Speed: %1$s KB/s | Time left: %2$s</string>
     <string name="btn_retry_download">Retry Download</string>
+    <string name="notification_downloading_model">Downloading model</string>
+    <string name="notification_downloading_model_named">Downloading \"%1$s\"</string>
+    <string name="notification_download_progress">Download progress: %1$d%%</string>
+    <string name="time_calculating">Calculating...</string>
+    <string name="time_format_hours_minutes">%1$dh %2$dm</string>
+    <string name="time_format_minutes_seconds">%1$dm %2$ds</string>
+    <string name="time_format_seconds">%1$ds</string>
     
     <!-- Settings -->
     <string name="settings">Settings</string>
@@ -46,6 +57,28 @@
     <string name="permission_overlay_message">Overlay permission is required to display voice assistant</string>
     <string name="permission_granted">Permission granted</string>
     <string name="permission_denied">Permission denied</string>
+    <string name="permission_reacquiring_screenshot">Reacquiring screenshot permission...</string>
+    <string name="permission_need_audio_for_assistant">Audio permission is required to start voice assistant</string>
+    <string name="permission_need_storage_for_screenshot">Storage permission is required to use screenshot function</string>
+    <string name="permission_need_overlay_for_assistant">Overlay permission is required to display assistant interface</string>
+    <string name="permission_screenshot_updated">Screenshot permission updated</string>
+    <string name="permission_status_complete">Permission setup complete:\n</string>
+    <string name="permission_audio_granted">🎤 Audio permission: ✅ Granted\n</string>
+    <string name="permission_audio_denied">🎤 Audio permission: ❌ Denied\n</string>
+    <string name="permission_storage_granted">💾 Storage permission: ✅ Granted\n</string>
+    <string name="permission_storage_denied">💾 Storage permission: ❌ Denied\n</string>
+    <string name="permission_overlay_granted">🔲 Overlay permission: ✅ Granted\n\n</string>
+    <string name="permission_overlay_denied">🔲 Overlay permission: ❌ Denied\n\n</string>
+    <string name="permission_all_granted">🎉 All permissions granted, you can use all features normally!</string>
+    <string name="permission_some_denied">⚠️ Some permissions denied, related features will be limited. You can enable them manually in settings later.</string>
+    <string name="permission_audio_granted_toast">Audio permission granted</string>
+    <string name="permission_audio_denied_toast">Audio permission denied, voice features unavailable</string>
+    <string name="permission_storage_granted_toast">Storage permission granted, screenshot function now available</string>
+    <string name="permission_storage_denied_toast">Storage permission denied, cannot save screenshots</string>
+    <string name="permission_overlay_granted_toast">Overlay permission granted</string>
+    <string name="permission_overlay_denied_toast">Overlay permission denied, cannot display assistant interface</string>
+    <string name="permission_screen_record_granted">Screen recording permission granted</string>
+    <string name="permission_screen_record_denied">Screen recording permission denied, screenshot function unavailable</string>
     <string name="go_to_settings">Go to Settings</string>
     <string name="cancel">Cancel</string>
     <string name="confirm">Confirm</string>

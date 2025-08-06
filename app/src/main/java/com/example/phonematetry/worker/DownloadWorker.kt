@@ -12,6 +12,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.Data
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
+import com.example.phonematetry.R
 import com.example.phonematetry.data.*
 import java.io.BufferedInputStream
 import java.io.File
@@ -381,11 +382,12 @@ class DownloadWorker(context: Context, params: WorkerParameters) :
      */
     private fun createForegroundInfo(progress: Int, modelName: String? = null): ForegroundInfo {
         // Create a notification for the foreground service
-        var title = "正在下载模型"
-        if (modelName != null) {
-            title = "正在下载 \"$modelName\""
+        val title = if (modelName != null) {
+            applicationContext.getString(R.string.notification_downloading_model_named, modelName)
+        } else {
+            applicationContext.getString(R.string.notification_downloading_model)
         }
-        val content = "下载进度: $progress%"
+        val content = applicationContext.getString(R.string.notification_download_progress, progress)
 
         val notification =
             NotificationCompat.Builder(applicationContext, FOREGROUND_NOTIFICATION_CHANNEL_ID)
