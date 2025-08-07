@@ -1,8 +1,8 @@
-# The Pipeline
+# The Pipeline (No AI. You can read pure human output :>
+
+> Download `phonemate.apk` to feel the APP. The APP is fully test only on Samsung S24 Ultra and only Android phone is supported.
 
 > **I write it on my own. No AI. You can read pure human output :)**
-
-> The APP is fully test only on Samsung S24 Ultra and only Android phone is supported.
 
 > Google AI Edge framework used: MediaPipe LLM Inference API. Model used: Gemma3n E2B; Whisper tiny.
 
