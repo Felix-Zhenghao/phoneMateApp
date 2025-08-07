@@ -47,7 +47,7 @@ This is only a temp solution. Once the audio modality is supported by the offici
 
 To maximally overlap the prefill time with other time costs, once the user takes a screenshot, it will be sent for prefilling. Typically this will totally overlap the image prefilling time with users' speaking time and ASR time. So we can prefill one image for free (I have tested that two images will not be that smooth).
 
-Therefore, the context management is done as follows: all previous ASR result and the current ASR results will be included in the context, and only the current screenshot will be included in the context. The prompt is f“{screenshot} {previous turns} {current turn} {fixed prompt}". Of course we can move the fixed prompt and previous turns before the screenshot and we can get even more free prefilling time. 
+Therefore, the context management is done as follows: all previous ASR result and the current ASR results will be included in the context, and only the current screenshot will be included in the context. The prompt is f“{screenshot} {previous turns} {current turn} {fixed prompt}". Of course we can move the fixed prompt and previous turns before the screenshot and we can get even more free prefilling time.
 
 Moreover, for most scenarios, including one image and all past user audio input is enough. Most of the user's intent is included in the past audio input and the model should memorize that. Consider the following conversation.
 
@@ -66,3 +66,13 @@ Model: ...
 In this scenario, previous audio input can help the model memorize the user's intent, and current screenshot can let the model give immediate instruction.
 
 Of course, one case that may need more image context window is failure recovery. The model gives some wrong instructions and the user does that. The model may need more previous  images to enable it to give instructions like "go back and click...".
+
+### Q3: Why give audio instructions rather than deploy a fully automated agent to click for the user?
+
+That can be dangerous and not easy to realize technically, for now.
+
+### Q4: Why edge model for this scenario?
+
+- Always-there. This grants 100% uptime. For the elderly people, this can be very important.
+- Low cost. No API calls. Just electricity used.
+- Privacy. Screenshot may include sensitive info.
